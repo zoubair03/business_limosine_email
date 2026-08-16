@@ -409,6 +409,7 @@ def set_sync_state(conn, key, value):
 
 
 # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # Application Settings & Configuration
 # --------------------------------------------------------------------------
 
@@ -432,7 +433,7 @@ def get_all_settings(conn):
 
 
 # --------------------------------------------------------------------------
-# WhatsApp Pending Alert Queries
+# WhatsApp / Telegram Pending Alert Queries
 # --------------------------------------------------------------------------
 
 def claim_pending_unalerted_requests(conn, threshold_minutes=10):
@@ -494,3 +495,88 @@ def mark_conversation_alerted(conn, conversation_id):
         "UPDATE conversations SET whatsapp_alert_sent = 1, updated_at = ? WHERE id = ?",
         (_now(), conversation_id),
     )
+
+
+# --------------------------------------------------------------------------
+# Sender filtering (blocked_senders / allowed_senders)
+#
+# Used by email_filter.py to avoid spending Gemini calls on obvious noise
+# (system notifications, newsletters...) and to guarantee known corporate
+# accounts are never filtered out.
+# --------------------------------------------------------------------------
+
+def _pattern_type_for(pattern):
+    return "email" if "@" in pattern else "domain"
+
+
+def add_blocked_sender(conn, pattern, reason=None):
+    """pattern is either a bare domain ('waynium.net') or a full email
+    ('backup@waynium.net'). Re-adding an existing pattern just updates the reason."""
+    pattern = pattern.strip().lower()
+    cur = conn.execute(
+        """
+        INSERT INTO blocked_senders (pattern, pattern_type, reason, hit_count, created_at)
+        VALUES (?, ?, ?, 0, ?)
+        ON CONFLICT(pattern) DO UPDATE SET reason = excluded.reason
+        """,
+        (pattern, _pattern_type_for(pattern), reason, _now()),
+    )
+    return cur.lastrowid
+
+
+def delete_blocked_sender(conn, blocked_id):
+    conn.execute("DELETE FROM blocked_senders WHERE id = ?", (blocked_id,))
+
+
+def list_blocked_senders(conn):
+    return conn.execute(
+        "SELECT * FROM blocked_senders ORDER BY hit_count DESC, created_at DESC"
+    ).fetchall()
+
+
+def get_matching_blocked_sender(conn, from_addr, domain):
+    """Exact match only (by design — no wildcard/substring matching here,
+    that's what the heuristics layer in email_filter.py is for)."""
+    return conn.execute(
+        "SELECT * FROM blocked_senders WHERE pattern = ? OR pattern = ?",
+        (from_addr, domain),
+    ).fetchone()
+
+
+def record_blocked_sender_hit(conn, blocked_id):
+    conn.execute(
+        "UPDATE blocked_senders SET hit_count = hit_count + 1, last_hit_at = ? WHERE id = ?",
+        (_now(), blocked_id),
+    )
+
+
+def add_allowed_sender(conn, pattern, note=None):
+    pattern = pattern.strip().lower()
+    cur = conn.execute(
+        """
+        INSERT INTO allowed_senders (pattern, pattern_type, note, created_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(pattern) DO UPDATE SET note = excluded.note
+        """,
+        (pattern, _pattern_type_for(pattern), note, _now()),
+    )
+    return cur.lastrowid
+
+
+def delete_allowed_sender(conn, allowed_id):
+    conn.execute("DELETE FROM allowed_senders WHERE id = ?", (allowed_id,))
+
+
+def list_allowed_senders(conn):
+    return conn.execute(
+        "SELECT * FROM allowed_senders ORDER BY created_at DESC"
+    ).fetchall()
+
+
+def is_sender_allowed(conn, from_addr, domain):
+    row = conn.execute(
+        "SELECT 1 FROM allowed_senders WHERE pattern = ? OR pattern = ?",
+        (from_addr, domain),
+    ).fetchone()
+    return row is not None
+

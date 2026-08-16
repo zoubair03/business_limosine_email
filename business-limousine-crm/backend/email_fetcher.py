@@ -16,6 +16,7 @@ import uuid
 from ai_classifier import classify_email
 from config import Config
 from database import db_session
+from email_filter import pre_filter
 from email_parser import extract_form_fields, parse_raw_email
 import models
 
@@ -165,29 +166,42 @@ def run_once():
                         continue
 
                     is_outbound = _is_outbound_sender(parsed.get("from_addr"))
+                    was_filtered = False
                     if is_outbound:
                         ai_result = {"category": "DISCUSSION", "confidence": 1.0}
                     else:
-                        ai_result = classify_email(
-                            subject=parsed["subject"],
-                            body=parsed["body_text"],
-                            from_name=parsed["from_name"],
+                        ai_result = pre_filter(
+                            db_conn,
                             from_addr=parsed["from_addr"],
+                            subject=parsed["subject"],
+                            body_text=parsed["body_text"],
                         )
+                        if ai_result is not None:
+                            was_filtered = True
+                        else:
+                            ai_result = classify_email(
+                                subject=parsed["subject"],
+                                body=parsed["body_text"],
+                                from_name=parsed["from_name"],
+                                from_addr=parsed["from_addr"],
+                            )
                         # Form-field regex extraction fills any gaps the AI left blank.
-                        form_fields = extract_form_fields(parsed["body_text"])
-                        for key in ("client_name", "client_phone", "trip_date", "origin", "destination"):
-                            form_key = {"client_name": "name", "client_phone": "phone"}.get(key, key)
-                            if not ai_result.get(key) and form_fields.get(form_key):
-                                ai_result[key] = form_fields[form_key]
-                        if not ai_result.get("client_email") and form_fields.get("email"):
-                            ai_result["client_email"] = form_fields["email"]
+                        # Skipped for pre-filtered mail: it was already deemed noise,
+                        # no point spending cycles extracting trip details from it.
+                        if not was_filtered:
+                            form_fields = extract_form_fields(parsed["body_text"])
+                            for key in ("client_name", "client_phone", "trip_date", "origin", "destination"):
+                                form_key = {"client_name": "name", "client_phone": "phone"}.get(key, key)
+                                if not ai_result.get(key) and form_fields.get(form_key):
+                                    ai_result[key] = form_fields[form_key]
+                            if not ai_result.get("client_email") and form_fields.get("email"):
+                                ai_result["client_email"] = form_fields["email"]
 
                     _store_message(db_conn, parsed, ai_result)
                     processed += 1
 
                 highest_uid = max(highest_uid, int(uid))
-                if not is_outbound:
+                if not is_outbound and not was_filtered:
                     time.sleep(0.5)  # Smooth pacing to respect Gemini API rate limits
 
             with db_session() as db_conn:
