@@ -27,7 +27,7 @@ DEFAULTS = {
     "GEMINI_MODEL": "gemini-3.5-flash-lite",
     "DB_PATH": str(PROJECT_ROOT / "crm.db"),
     "POLL_INTERVAL_SECONDS": "60",
-    "INITIAL_SYNC_LIMIT": "100",
+    "INITIAL_SYNC_LIMIT": "110",
     "SECRET_KEY": "business-limousine-secure-dispatch-key-2026",
     "FLASK_HOST": "0.0.0.0",
     "FLASK_PORT": "5000",
