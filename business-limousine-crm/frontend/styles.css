@@ -694,11 +694,29 @@ button, input, textarea, select {
   border-bottom: 2px solid transparent;
   position: relative;
   top: 1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .tab-btn.active {
   color: var(--text);
   border-bottom-color: var(--brass);
+}
+
+.notes-unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #E58E26;
+  box-shadow: 0 0 0 3px rgba(229, 142, 38, 0.25), 0 0 8px rgba(229, 142, 38, 0.7);
+  display: inline-block;
+  animation: notePulse 1.8s ease-in-out infinite;
+}
+
+@keyframes notePulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.85; }
 }
 
 /* ---------------------------------------------------------------------- */
@@ -949,22 +967,61 @@ button, input, textarea, select {
   gap: 6px;
 }
 
-.note-role-tag {
-  font-size: 9.5px;
-  font-weight: 700;
-  padding: 2px 6px;
+.note-item.unread {
+  border-left-color: #E58E26;
+  background: #FFFDF9;
+  box-shadow: 0 0 0 1px rgba(229, 142, 38, 0.2), var(--shadow-sm);
+}
+
+.note-unread-tag {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
   border-radius: 3px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  color: var(--text-muted);
-  letter-spacing: 0.04em;
+  background: #E58E26;
+  color: #0F172A;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
+.note-role-tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.2;
+  background: var(--line);
+  color: var(--text);
+  border: 1px solid transparent;
+}
+
 .note-role-tag.admin {
-  background: rgba(197, 160, 89, 0.15);
-  border-color: rgba(197, 160, 89, 0.35);
-  color: var(--brass-deep);
+  background: rgba(184, 122, 33, 0.15);
+  border: 1px solid rgba(184, 122, 33, 0.35);
+  color: #96611A;
+}
+
+.note-role-tag.dispatcher {
+  background: rgba(62, 107, 146, 0.14);
+  border: 1px solid rgba(62, 107, 146, 0.35);
+  color: #2C5270;
+}
+
+.note-role-tag.driver {
+  background: rgba(46, 107, 79, 0.14);
+  border: 1px solid rgba(46, 107, 79, 0.35);
+  color: #23533D;
+}
+
+.note-role-tag.accountant {
+  background: rgba(120, 75, 160, 0.14);
+  border: 1px solid rgba(120, 75, 160, 0.35);
+  color: #583377;
 }
 
 .note-time {
