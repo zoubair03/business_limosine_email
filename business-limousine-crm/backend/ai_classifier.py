@@ -105,7 +105,7 @@ def classify_email(subject, body, from_name="", from_addr="", timeout=30):
     }
 
     parsed = None
-    for attempt in range(3):
+    for attempt in range(5):
         try:
             resp = requests.post(
                 url,
@@ -114,8 +114,9 @@ def classify_email(subject, body, from_name="", from_addr="", timeout=30):
                 timeout=timeout,
             )
             if resp.status_code == 429:
-                logger.warning("Gemini rate limited (429); waiting before retry (attempt %d/3)", attempt + 1)
-                time.sleep(2 * (attempt + 1))
+                wait_secs = 3 + attempt * 2
+                logger.warning("Gemini rate limited (429); waiting %ds before retry (attempt %d/5)", wait_secs, attempt + 1)
+                time.sleep(wait_secs)
                 continue
             resp.raise_for_status()
             data = resp.json()
@@ -123,10 +124,10 @@ def classify_email(subject, body, from_name="", from_addr="", timeout=30):
             parsed = json.loads(_strip_code_fences(text))
             break
         except Exception as exc:
-            if attempt == 2:
+            if attempt == 4:
                 logger.error("Gemini classification failed: %s", exc)
                 return dict(_FALLBACK)
-            time.sleep(1)
+            time.sleep(2)
 
     if not parsed:
         return dict(_FALLBACK)

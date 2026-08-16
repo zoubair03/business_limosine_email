@@ -134,6 +134,36 @@ def get_or_create_conversation_for_inbound(conn, parsed, ai_result):
         return cid, True
 
 
+def get_or_create_conversation_for_outbound(conn, parsed):
+    """
+    Routes an outbound email (sent by staff/dispatch from Gmail/phone/etc.):
+    1. If In-Reply-To / References match an existing thread -> attach to that thread.
+    2. Otherwise, look for an active conversation with the recipient (to_addr).
+    3. If none exists, create a new DISCUSSION conversation for to_addr.
+    """
+    to_addr = (parsed.get("to_addr") or "").lower().strip()
+    if not to_addr:
+        to_addr = "unknown@unknown"
+
+    # 1. Match by thread headers
+    thread_cid = find_conversation_by_thread_headers(
+        conn,
+        in_reply_to=parsed.get("in_reply_to"),
+        references=parsed.get("references"),
+    )
+    if thread_cid:
+        return thread_cid, False
+
+    # 2. Match active conversation by recipient email
+    active_cid = find_active_conversation_by_email(conn, to_addr)
+    if active_cid:
+        return active_cid, False
+
+    # 3. Create discussion conversation for recipient
+    cid = create_conversation(conn, to_addr, client_name=None, status="DISCUSSION")
+    return cid, True
+
+
 def get_or_create_conversation(conn, client_email, client_name=None, status="NEW_REQUEST"):
     """Legacy helper for seeding/testing."""
     existing = get_conversation_by_email(conn, client_email)
@@ -261,21 +291,102 @@ def get_last_inbound_message(conn, conversation_id):
 
 
 # --------------------------------------------------------------------------
+# Users
+# --------------------------------------------------------------------------
+
+ALL_ROLES = ["ADMIN", "DISPATCHER", "DRIVER", "ACCOUNTANT"]
+
+
+def create_user(conn, email, password_hash, full_name, role="DISPATCHER", avatar_color="#C5A059", is_active=1):
+    now = _now()
+    cur = conn.execute(
+        """
+        INSERT INTO users (email, password_hash, full_name, role, avatar_color, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (email.lower().strip(), password_hash, full_name.strip(), role, avatar_color, int(bool(is_active)), now, now),
+    )
+    return cur.lastrowid
+
+
+def get_user_by_email(conn, email):
+    if not email:
+        return None
+    return conn.execute("SELECT * FROM users WHERE email = ? COLLATE NOCASE", (email.strip(),)).fetchone()
+
+
+def get_user_by_id(conn, user_id):
+    if not user_id:
+        return None
+    return conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+
+def list_users(conn):
+    return conn.execute(
+        "SELECT id, email, full_name, role, avatar_color, is_active, created_at FROM users ORDER BY id ASC"
+    ).fetchall()
+
+
+def update_user(conn, user_id, **fields):
+    allowed = {"full_name", "role", "avatar_color", "is_active", "password_hash"}
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if not updates:
+        return
+    updates["updated_at"] = _now()
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    conn.execute(f"UPDATE users SET {set_clause} WHERE id = ?", (*updates.values(), user_id))
+
+
+def ensure_default_admin(conn):
+    count = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+    if count == 0:
+        from auth import hash_password
+        create_user(
+            conn,
+            email="admin@businesslimousine.com",
+            password_hash=hash_password("admin123"),
+            full_name="System Administrator",
+            role="ADMIN",
+            avatar_color="#C5A059",
+        )
+        create_user(
+            conn,
+            email="dispatcher@businesslimousine.com",
+            password_hash=hash_password("dispatch123"),
+            full_name="Lead Dispatcher",
+            role="DISPATCHER",
+            avatar_color="#3B82F6",
+        )
+
+
+# --------------------------------------------------------------------------
 # Notes
 # --------------------------------------------------------------------------
 
-def add_note(conn, conversation_id, note_text, author=None):
+def add_note(conn, conversation_id, note_text, user_id=None, author=None):
     now = _now()
     cur = conn.execute(
-        "INSERT INTO notes (conversation_id, author, note_text, created_at) VALUES (?, ?, ?, ?)",
-        (conversation_id, author, note_text, now),
+        """
+        INSERT INTO notes (conversation_id, user_id, author, note_text, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (conversation_id, user_id, author, note_text, now),
     )
     return cur.lastrowid
 
 
 def list_notes(conn, conversation_id):
     return conn.execute(
-        "SELECT * FROM notes WHERE conversation_id = ? ORDER BY created_at ASC",
+        """
+        SELECT n.id, n.conversation_id, n.user_id, n.note_text, n.created_at,
+               COALESCE(u.full_name, n.author, 'Staff') AS author,
+               u.role AS author_role,
+               u.avatar_color AS author_avatar
+        FROM notes n
+        LEFT JOIN users u ON n.user_id = u.id
+        WHERE n.conversation_id = ?
+        ORDER BY n.created_at ASC, n.id ASC
+        """,
         (conversation_id,),
     ).fetchall()
 

@@ -18,6 +18,7 @@ const state = {
   selectedId: null,
   selectedDetail: null,
   tab: "thread",
+  user: null,
 };
 
 const el = (id) => document.getElementById(id);
@@ -61,10 +62,107 @@ async function api(path, options = {}) {
     ...options,
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401) {
+    state.user = null;
+    showAuthModal();
+    throw new Error(data.error || "Authentication required");
+  }
   if (!res.ok) {
     throw new Error(data.error || `Request failed (${res.status})`);
   }
   return data;
+}
+
+// -------------------------------------------------------------------------
+// Authentication & User Profile
+// -------------------------------------------------------------------------
+
+function showAuthModal(errorMsg = null) {
+  const modal = el("auth-modal");
+  const errorEl = el("auth-error");
+  modal.hidden = false;
+  if (errorMsg) {
+    errorEl.textContent = errorMsg;
+    errorEl.hidden = false;
+  } else {
+    errorEl.hidden = true;
+  }
+}
+
+function hideAuthModal() {
+  el("auth-modal").hidden = true;
+  el("auth-error").hidden = true;
+}
+
+function renderUserProfile() {
+  if (!state.user) {
+    el("user-profile-badge").style.display = "none";
+    return;
+  }
+  el("user-profile-badge").style.display = "flex";
+  el("user-name").textContent = state.user.full_name || state.user.email;
+  el("user-role-pill").textContent = state.user.role || "STAFF";
+  const avatarEl = el("user-avatar");
+  avatarEl.textContent = (state.user.full_name || state.user.email || "U")[0].toUpperCase();
+  if (state.user.avatar_color) {
+    avatarEl.style.background = state.user.avatar_color;
+  }
+}
+
+async function checkAuth() {
+  try {
+    const data = await api("/api/auth/me");
+    if (data.authenticated && data.user) {
+      state.user = data.user;
+      renderUserProfile();
+      hideAuthModal();
+      return true;
+    }
+  } catch (err) {
+    // 401 or network error
+  }
+  state.user = null;
+  renderUserProfile();
+  showAuthModal();
+  return false;
+}
+
+async function handleLogin(email, password) {
+  const submitBtn = el("login-submit-btn");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Signing In…";
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "Invalid credentials");
+    }
+    state.user = data.user;
+    renderUserProfile();
+    hideAuthModal();
+    await loadConversations();
+  } catch (err) {
+    showAuthModal(err.message);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Sign In to Console";
+  }
+}
+
+async function handleLogout() {
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } catch (err) {}
+  state.user = null;
+  state.conversations = [];
+  state.selectedId = null;
+  renderUserProfile();
+  renderConversations();
+  showAuthModal("You have been signed out.");
 }
 
 // -------------------------------------------------------------------------
@@ -101,34 +199,53 @@ function renderStatusNav() {
 // Conversation list
 // -------------------------------------------------------------------------
 
-function routeLabel(convo) {
-  if (convo.origin || convo.destination) {
-    return `${convo.origin || "?"} → ${convo.destination || "?"}`;
+async function loadConversations() {
+  if (!state.user) return;
+  const params = new URLSearchParams();
+  if (state.status !== "ALL") params.set("status", state.status);
+  if (state.search) params.set("search", state.search);
+
+  try {
+    const data = await api(`/api/conversations?${params.toString()}`);
+    state.conversations = data.conversations;
+    state.counts = data.counts;
+    renderStatusNav();
+    renderConversations();
+
+    if (state.selectedId) {
+      const stillExists = state.conversations.some((c) => c.id === state.selectedId);
+      if (stillExists) {
+        selectConversation(state.selectedId, false);
+      }
+    }
+  } catch (err) {
+    console.error("Failed to load conversations:", err);
   }
-  return "";
 }
 
-function renderConversationList() {
-  const listEl = el("conversation-list");
-  const emptyEl = el("list-empty");
-
+function renderConversations() {
+  const list = el("conversation-list");
+  const empty = el("list-empty");
   if (state.conversations.length === 0) {
-    listEl.innerHTML = "";
-    emptyEl.hidden = false;
+    list.innerHTML = "";
+    empty.hidden = false;
     return;
   }
-  emptyEl.hidden = true;
+  empty.hidden = true;
 
-  listEl.innerHTML = state.conversations.map((c) => {
+  list.innerHTML = state.conversations.map((c) => {
     const selected = c.id === state.selectedId ? "selected" : "";
-    const route = routeLabel(c);
+    const name = c.client_name || c.client_email.split("@")[0];
+    const route = (c.origin && c.destination)
+      ? `${c.origin} → ${c.destination}`
+      : (c.origin || c.destination || "");
     return `
       <button class="conversation-row ${selected}" data-id="${c.id}">
         <span class="row-tag status-${c.status}"></span>
         <span class="row-body">
           <span class="row-top">
-            <span class="row-name">${escapeHtml(c.client_name || c.client_email)}</span>
-            <span class="row-time mono">${formatRelative(c.last_message_at)}</span>
+            <span class="row-name">${escapeHtml(name)}</span>
+            <span class="row-time mono">${formatRelative(c.last_message_at || c.created_at)}</span>
           </span>
           <span class="row-email">${escapeHtml(c.client_email)}</span>
           <span class="row-bottom">
@@ -140,101 +257,90 @@ function renderConversationList() {
     `;
   }).join("");
 
-  listEl.querySelectorAll(".conversation-row").forEach((row) => {
-    row.addEventListener("click", () => selectConversation(Number(row.dataset.id)));
+  list.querySelectorAll(".conversation-row").forEach((row) => {
+    row.addEventListener("click", () => {
+      selectConversation(Number(row.dataset.id));
+    });
   });
 }
 
-async function loadConversations() {
-  renderStatusNav();
-  const params = new URLSearchParams();
-  if (state.status !== "ALL") params.set("status", state.status);
-  if (state.search) params.set("search", state.search);
-  const data = await api(`/api/conversations?${params.toString()}`);
-  state.conversations = data.conversations;
-  state.counts = data.counts;
-  renderStatusNav();
-  renderConversationList();
-}
-
 // -------------------------------------------------------------------------
-// Detail panel
+// Conversation detail
 // -------------------------------------------------------------------------
 
-async function selectConversation(id) {
+async function selectConversation(id, reloadDetail = true) {
   state.selectedId = id;
-  document.body.classList.add("mobile-detail-open");
-  renderConversationList();
-  const data = await api(`/api/conversations/${id}`);
-  state.selectedDetail = data;
-  renderDetail();
-}
+  document.querySelectorAll(".conversation-row").forEach((row) => {
+    row.classList.toggle("selected", Number(row.dataset.id) === id);
+  });
 
-function renderStatusOptions(currentStatus) {
-  return STATUSES.filter((s) => s.key !== "ALL").map((s) =>
-    `<option value="${s.key}" ${s.key === currentStatus ? "selected" : ""}>${s.label}</option>`
-  ).join("");
-}
+  if (reloadDetail) {
+    try {
+      state.selectedDetail = await api(`/api/conversations/${id}`);
+    } catch (err) {
+      console.error(err);
+      return;
+    }
+  }
 
-function renderDetail() {
   const { conversation, messages, notes } = state.selectedDetail;
 
   el("detail-empty").hidden = true;
   el("detail-content").hidden = false;
+  document.body.classList.add("mobile-detail-open");
 
-  el("client-name").textContent = conversation.client_name || conversation.client_email;
+  el("client-name").textContent = conversation.client_name || conversation.client_email.split("@")[0];
   el("client-email").textContent = conversation.client_email || "";
   el("client-phone").textContent = conversation.client_phone || "";
 
-  const statusSelect = el("status-select");
-  statusSelect.innerHTML = renderStatusOptions(conversation.status);
-  statusSelect.className = `status-select status-${conversation.status}`;
+  renderStatusSelect(conversation.status);
 
-  el("trip-origin").textContent = conversation.origin || "Origin —";
-  el("trip-destination").textContent = conversation.destination || "Destination —";
+  el("trip-origin").textContent = conversation.origin || "Pickup not set";
+  el("trip-destination").textContent = conversation.destination || "Drop-off not set";
   el("trip-date").textContent = conversation.trip_date || "Date not set";
+  el("trip-edit").hidden = true;
 
-  // pre-fill edit form
   el("edit-client-name").value = conversation.client_name || "";
   el("edit-client-phone").value = conversation.client_phone || "";
   el("edit-trip-date").value = conversation.trip_date || "";
   el("edit-origin").value = conversation.origin || "";
   el("edit-destination").value = conversation.destination || "";
 
-  el("trip-edit").hidden = true;
-  el("trip-card").hidden = false;
-
-  renderThread(messages);
+  renderThread(messages, conversation);
   renderNotes(notes);
 
   const lastInbound = [...messages].reverse().find((m) => m.direction === "inbound");
-  el("reply-subject").value = lastInbound ? `Re: ${lastInbound.subject || ""}` : "";
-  el("reply-body").value = "";
+  const subj = lastInbound?.subject || "Your inquiry";
+  el("reply-subject").value = subj.startsWith("Re:") ? subj : `Re: ${subj}`;
   el("reply-status").textContent = "";
-  el("reply-status").className = "reply-status";
-
-  setTab(state.tab);
 }
 
-function renderThread(messages) {
+function renderStatusSelect(currentStatus) {
+  const sel = el("status-select");
+  sel.innerHTML = STATUSES.filter((s) => s.key !== "ALL").map((s) => `
+    <option value="${s.key}" ${s.key === currentStatus ? "selected" : ""}>
+      ${s.label}
+    </option>
+  `).join("");
+}
+
+function renderThread(messages, convo) {
   const threadEl = el("thread");
   if (!messages || messages.length === 0) {
-    threadEl.innerHTML = `<p style="color:var(--text-muted); font-size:13px; padding: 20px 0;">No messages yet.</p>`;
+    threadEl.innerHTML = `<div style="color:var(--text-muted); font-size:13px; padding: 20px 0;">No messages in this thread yet.</div>`;
     return;
   }
 
-  // Strict chronological sorting: oldest message at top, newest at bottom
-  const sorted = [...messages].sort((a, b) => {
+  const sortedMessages = [...messages].sort((a, b) => {
     const timeA = new Date(a.received_at || a.created_at || 0).getTime();
     const timeB = new Date(b.received_at || b.created_at || 0).getTime();
-    if (timeA !== timeB) return timeA - timeB;
-    return (a.id || 0) - (b.id || 0);
+    return timeA - timeB;
   });
 
-  threadEl.innerHTML = sorted.map((m) => {
+  threadEl.innerHTML = sortedMessages.map((m) => {
     const isInbound = m.direction === "inbound";
     const senderName = isInbound
-      ? (state.selectedDetail?.conversation?.client_name || m.from_addr || "Client")
+      ? (convo?.client_name || m.from_addr || "Client")
       : "Business Limousine";
     const avatarInitial = (senderName.trim().charAt(0) || (isInbound ? "C" : "B")).toUpperCase();
 
@@ -258,11 +364,12 @@ function renderThread(messages) {
           <div class="message-meta-info">
             <span class="message-author">${escapeHtml(senderName)}</span>
             <span class="message-time">${formatTimestamp(m.received_at || m.created_at)}</span>
+            ${m.ai_category ? `<span class="status-pill status-${m.ai_category}" style="font-size: 8.5px; padding: 1px 5px;">${m.ai_category}</span>` : ""}
           </div>
         </div>
         <div class="message-bubble">
           ${m.subject ? `<div class="message-subject">${escapeHtml(m.subject)}</div>` : ""}
-          ${bodyText ? `<div class="message-body">${escapeHtml(bodyText)}</div>` : ""}
+          <div class="message-body">${escapeHtml(bodyText)}</div>
           ${quotedText ? `
             <details class="message-quote">
               <summary>Quoted email history</summary>
@@ -282,15 +389,24 @@ function renderThread(messages) {
 function renderNotes(notes) {
   const notesEl = el("notes-list");
   if (notes.length === 0) {
-    notesEl.innerHTML = `<div class="notes-empty">No internal notes yet.</div>`;
+    notesEl.innerHTML = `<div class="notes-empty">No internal notes yet. Notes are saved to your staff account.</div>`;
     return;
   }
-  notesEl.innerHTML = notes.map((n) => `
-    <div class="note-item">
-      <div>${escapeHtml(n.note_text)}</div>
-      <div class="note-time">${formatTimestamp(n.created_at)}${n.author ? " · " + escapeHtml(n.author) : ""}</div>
-    </div>
-  `).join("");
+  notesEl.innerHTML = notes.map((n) => {
+    const authorName = escapeHtml(n.author || "Staff");
+    const roleClass = (n.author_role || "dispatcher").toLowerCase();
+    const roleLabel = escapeHtml(n.author_role || "STAFF");
+    return `
+      <div class="note-item">
+        <div class="note-header">
+          <span class="note-author-badge">${authorName}</span>
+          <span class="note-role-tag ${roleClass}">${roleLabel}</span>
+          <span class="note-time">${formatTimestamp(n.created_at)}</span>
+        </div>
+        <div>${escapeHtml(n.note_text)}</div>
+      </div>
+    `;
+  }).join("");
 }
 
 function setTab(tab) {
@@ -305,6 +421,30 @@ function setTab(tab) {
 // -------------------------------------------------------------------------
 
 function wireEvents() {
+  // Login form
+  el("login-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = el("login-email").value.trim();
+    const password = el("login-password").value;
+    await handleLogin(email, password);
+  });
+
+  // Demo credential autofill shortcuts
+  el("demo-admin-btn")?.addEventListener("click", () => {
+    el("login-email").value = "admin@businesslimousine.com";
+    el("login-password").value = "admin123";
+    handleLogin("admin@businesslimousine.com", "admin123");
+  });
+
+  el("demo-dispatch-btn")?.addEventListener("click", () => {
+    el("login-email").value = "dispatcher@businesslimousine.com";
+    el("login-password").value = "dispatch123";
+    handleLogin("dispatcher@businesslimousine.com", "dispatch123");
+  });
+
+  // Logout button
+  el("logout-btn")?.addEventListener("click", handleLogout);
+
   let searchTimer = null;
   el("search-input").addEventListener("input", (e) => {
     clearTimeout(searchTimer);
@@ -424,5 +564,8 @@ function wireEvents() {
 
 (async function init() {
   wireEvents();
-  await loadConversations();
+  const authenticated = await checkAuth();
+  if (authenticated) {
+    await loadConversations();
+  }
 })();

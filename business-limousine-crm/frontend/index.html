@@ -26,6 +26,17 @@
     </nav>
 
     <div class="sidebar-footer">
+      <div class="user-profile-badge" id="user-profile-badge">
+        <div class="user-avatar" id="user-avatar">A</div>
+        <div class="user-info">
+          <div class="user-name" id="user-name">Administrator</div>
+          <div class="user-role-pill" id="user-role-pill">ADMIN</div>
+        </div>
+        <button class="btn-logout" id="logout-btn" title="Log out" aria-label="Log out">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+        </button>
+      </div>
+
       <button id="sync-btn" class="btn-sync">
         <span class="sync-dot"></span>
         <span id="sync-label">Sync inbox</span>
@@ -114,7 +125,7 @@
           <div class="tab-panel" id="tab-notes" hidden>
             <div id="notes-list" class="notes-list"></div>
             <div class="note-box">
-              <textarea id="note-input" rows="2" placeholder="Add an internal note (not visible to the client)…"></textarea>
+              <textarea id="note-input" rows="2" placeholder="Add an internal note (attributed to your account)…"></textarea>
               <button id="note-add-btn" class="btn-primary">Add note</button>
             </div>
           </div>
@@ -124,6 +135,43 @@
     </div>
   </main>
 
+</div>
+
+<!-- Luxury Authentication Overlay -->
+<div id="auth-modal" class="auth-overlay">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="auth-crest">BL</div>
+      <div class="auth-title">Business Limousine</div>
+      <div class="auth-subtitle">Dispatch & Chauffeur Management Console</div>
+    </div>
+
+    <div id="auth-error" class="auth-error" hidden></div>
+
+    <form id="login-form" class="auth-form" autocomplete="on">
+      <div class="form-group">
+        <label for="login-email">Email Address</label>
+        <input type="email" id="login-email" placeholder="admin@businesslimousine.com" required autofocus autocomplete="email" />
+      </div>
+      <div class="form-group">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password" />
+      </div>
+      <button type="submit" id="login-submit-btn" class="btn-login">
+        <span>Sign In to Console</span>
+      </button>
+    </form>
+
+    <div class="auth-demo-hints">
+      <div class="demo-title">Default Staff Credentials:</div>
+      <div class="demo-account" id="demo-admin-btn">
+        <span class="demo-role admin">ADMIN</span> admin@businesslimousine.com / admin123
+      </div>
+      <div class="demo-account" id="demo-dispatch-btn">
+        <span class="demo-role dispatcher">DISPATCH</span> dispatcher@businesslimousine.com / dispatch123
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="app.js"></script>

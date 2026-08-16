@@ -53,39 +53,61 @@ def _fetch_new_uids(imap_conn, last_uid, initial_limit=None):
     return uids
 
 
-def _store_message(db_conn, parsed, ai_result):
-    conversation_id, created = models.get_or_create_conversation_for_inbound(
-        db_conn, parsed, ai_result
-    )
+def _is_outbound_sender(from_addr):
+    if not from_addr:
+        return False
+    from_clean = from_addr.lower().strip()
+    our_addresses = set()
+    if Config.IMAP_USER:
+        our_addresses.add(Config.IMAP_USER.lower().strip())
+    if Config.SMTP_USER:
+        our_addresses.add(Config.SMTP_USER.lower().strip())
+    return from_clean in our_addresses
 
-    client_name = ai_result.get("client_name") or parsed.get("from_name") or None
 
-    if created:
-        models.update_conversation_fields(
-            db_conn,
-            conversation_id,
-            client_name=client_name,
-            client_phone=ai_result.get("client_phone"),
-            trip_date=ai_result.get("trip_date"),
-            origin=ai_result.get("origin"),
-            destination=ai_result.get("destination"),
+def _store_message(db_conn, parsed, ai_result=None):
+    is_outbound = _is_outbound_sender(parsed.get("from_addr"))
+
+    if is_outbound:
+        direction = "outbound"
+        conversation_id, created = models.get_or_create_conversation_for_outbound(
+            db_conn, parsed
         )
+        models.maybe_auto_update_status(db_conn, conversation_id, "DISCUSSION")
     else:
-        # Fill in any missing details on existing conversation without overwriting existing trip details
-        existing = models.get_conversation(db_conn, conversation_id)
-        updates = {}
-        if not existing.get("client_phone") and ai_result.get("client_phone"):
-            updates["client_phone"] = ai_result["client_phone"]
-        if not existing.get("trip_date") and ai_result.get("trip_date"):
-            updates["trip_date"] = ai_result["trip_date"]
-        if not existing.get("origin") and ai_result.get("origin"):
-            updates["origin"] = ai_result["origin"]
-        if not existing.get("destination") and ai_result.get("destination"):
-            updates["destination"] = ai_result["destination"]
-        if updates:
-            models.update_conversation_fields(db_conn, conversation_id, **updates)
+        direction = "inbound"
+        conversation_id, created = models.get_or_create_conversation_for_inbound(
+            db_conn, parsed, ai_result
+        )
+        client_name = ai_result.get("client_name") or parsed.get("from_name") or None
 
-        models.maybe_auto_update_status(db_conn, conversation_id, ai_result["category"])
+        if created:
+            models.update_conversation_fields(
+                db_conn,
+                conversation_id,
+                client_name=client_name,
+                client_phone=ai_result.get("client_phone"),
+                trip_date=ai_result.get("trip_date"),
+                origin=ai_result.get("origin"),
+                destination=ai_result.get("destination"),
+            )
+        else:
+            # Fill in any missing details on existing conversation without overwriting existing trip details
+            existing = models.get_conversation(db_conn, conversation_id)
+            updates = {}
+            if existing:
+                if not existing["client_phone"] and ai_result.get("client_phone"):
+                    updates["client_phone"] = ai_result["client_phone"]
+                if not existing["trip_date"] and ai_result.get("trip_date"):
+                    updates["trip_date"] = ai_result["trip_date"]
+                if not existing["origin"] and ai_result.get("origin"):
+                    updates["origin"] = ai_result["origin"]
+                if not existing["destination"] and ai_result.get("destination"):
+                    updates["destination"] = ai_result["destination"]
+                if updates:
+                    models.update_conversation_fields(db_conn, conversation_id, **updates)
+
+            models.maybe_auto_update_status(db_conn, conversation_id, ai_result["category"])
 
     msg_id = parsed.get("message_id")
     if not msg_id:
@@ -94,7 +116,7 @@ def _store_message(db_conn, parsed, ai_result):
     models.add_message(
         db_conn,
         conversation_id=conversation_id,
-        direction="inbound",
+        direction=direction,
         subject=parsed["subject"],
         body_text=parsed["body_text"],
         body_html=parsed["body_html"],
@@ -102,8 +124,8 @@ def _store_message(db_conn, parsed, ai_result):
         to_addr=parsed["to_addr"],
         message_id=msg_id,
         in_reply_to=parsed["in_reply_to"],
-        ai_category=ai_result["category"],
-        ai_confidence=ai_result["confidence"],
+        ai_category=ai_result["category"] if ai_result else None,
+        ai_confidence=ai_result["confidence"] if ai_result else None,
         received_at=parsed["date_iso"],
     )
     return conversation_id
@@ -142,26 +164,31 @@ def run_once():
                         highest_uid = max(highest_uid, int(uid))
                         continue
 
-                    ai_result = classify_email(
-                        subject=parsed["subject"],
-                        body=parsed["body_text"],
-                        from_name=parsed["from_name"],
-                        from_addr=parsed["from_addr"],
-                    )
-                    # Form-field regex extraction fills any gaps the AI left blank.
-                    form_fields = extract_form_fields(parsed["body_text"])
-                    for key in ("client_name", "client_phone", "trip_date", "origin", "destination"):
-                        form_key = {"client_name": "name", "client_phone": "phone"}.get(key, key)
-                        if not ai_result.get(key) and form_fields.get(form_key):
-                            ai_result[key] = form_fields[form_key]
-                    if not ai_result.get("client_email") and form_fields.get("email"):
-                        ai_result["client_email"] = form_fields["email"]
+                    is_outbound = _is_outbound_sender(parsed.get("from_addr"))
+                    if is_outbound:
+                        ai_result = {"category": "DISCUSSION", "confidence": 1.0}
+                    else:
+                        ai_result = classify_email(
+                            subject=parsed["subject"],
+                            body=parsed["body_text"],
+                            from_name=parsed["from_name"],
+                            from_addr=parsed["from_addr"],
+                        )
+                        # Form-field regex extraction fills any gaps the AI left blank.
+                        form_fields = extract_form_fields(parsed["body_text"])
+                        for key in ("client_name", "client_phone", "trip_date", "origin", "destination"):
+                            form_key = {"client_name": "name", "client_phone": "phone"}.get(key, key)
+                            if not ai_result.get(key) and form_fields.get(form_key):
+                                ai_result[key] = form_fields[form_key]
+                        if not ai_result.get("client_email") and form_fields.get("email"):
+                            ai_result["client_email"] = form_fields["email"]
 
                     _store_message(db_conn, parsed, ai_result)
                     processed += 1
 
                 highest_uid = max(highest_uid, int(uid))
-                time.sleep(0.5)  # Smooth pacing to respect Gemini API rate limits
+                if not is_outbound:
+                    time.sleep(0.5)  # Smooth pacing to respect Gemini API rate limits
 
             with db_session() as db_conn:
                 models.set_sync_state(db_conn, SYNC_STATE_KEY, highest_uid)

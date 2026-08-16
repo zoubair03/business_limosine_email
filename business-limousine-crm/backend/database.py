@@ -10,6 +10,20 @@ from contextlib import contextmanager
 from config import Config
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    email         TEXT UNIQUE NOT NULL COLLATE NOCASE,
+    password_hash TEXT NOT NULL,
+    full_name     TEXT NOT NULL,
+    role          TEXT NOT NULL DEFAULT 'DISPATCHER' CHECK (role IN ('ADMIN', 'DISPATCHER', 'DRIVER', 'ACCOUNTANT')),
+    avatar_color  TEXT DEFAULT '#C5A059',
+    is_active     INTEGER NOT NULL DEFAULT 1,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email);
+
 CREATE TABLE IF NOT EXISTS conversations (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     client_name     TEXT,
@@ -30,6 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_conversations_email
 CREATE TABLE IF NOT EXISTS messages (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
     direction       TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
     message_id      TEXT UNIQUE,
     in_reply_to     TEXT,
@@ -50,6 +65,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_conversation
 CREATE TABLE IF NOT EXISTS notes (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
     author          TEXT,
     note_text       TEXT NOT NULL,
     created_at      TEXT NOT NULL
@@ -95,6 +111,16 @@ def init_db():
         except Exception:
             pass
         conn.executescript(SCHEMA)
+
+        # Migrations: ensure user_id column exists on existing notes table if table existed
+        try:
+            conn.execute("ALTER TABLE notes ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE messages ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL")
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

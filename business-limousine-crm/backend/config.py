@@ -27,7 +27,8 @@ DEFAULTS = {
     "GEMINI_MODEL": "gemini-3.5-flash-lite",
     "DB_PATH": str(PROJECT_ROOT / "crm.db"),
     "POLL_INTERVAL_SECONDS": "60",
-    "INITIAL_SYNC_LIMIT": "20",
+    "INITIAL_SYNC_LIMIT": "100",
+    "SECRET_KEY": "business-limousine-secure-dispatch-key-2026",
     "FLASK_HOST": "0.0.0.0",
     "FLASK_PORT": "5000",
 }
@@ -103,7 +104,11 @@ class _Config:
 
     @property
     def INITIAL_SYNC_LIMIT(self):
-        return int(self._get("INITIAL_SYNC_LIMIT", "5"))
+        return int(self._get("INITIAL_SYNC_LIMIT", "100"))
+
+    @property
+    def SECRET_KEY(self):
+        return self._get("SECRET_KEY", "business-limousine-secure-dispatch-key-2026")
 
     @property
     def FLASK_HOST(self):
