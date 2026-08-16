@@ -19,6 +19,12 @@ const state = {
   selectedDetail: null,
   tab: "thread",
   user: null,
+  view: "conversations",
+  waSettings: {
+    enabled: true,
+    threshold_minutes: 10,
+    dispatcher_numbers: [],
+  },
 };
 
 const el = (id) => document.getElementById(id);
@@ -190,9 +196,33 @@ function renderStatusNav() {
     btn.addEventListener("click", () => {
       state.status = btn.dataset.status;
       el("panel-title").textContent = STATUSES.find((s) => s.key === state.status).label;
+      switchView("conversations");
       loadConversations();
     });
   });
+}
+
+// -------------------------------------------------------------------------
+// View switching (conversations manifest vs. settings screens)
+// -------------------------------------------------------------------------
+
+function switchView(view) {
+  state.view = view;
+
+  el("conversations-content").hidden = view !== "conversations";
+  el("whatsapp-settings-view").hidden = view !== "whatsapp-settings";
+
+  el("whatsapp-settings-nav-btn").classList.toggle("active", view === "whatsapp-settings");
+  document.querySelectorAll("#status-nav .status-nav-item").forEach((btn) => {
+    btn.classList.toggle("active", view === "conversations" && btn.dataset.status === state.status);
+  });
+
+  if (view === "whatsapp-settings") {
+    el("panel-title").textContent = "WhatsApp Alerts";
+    loadWhatsAppSettings();
+  } else {
+    el("panel-title").textContent = STATUSES.find((s) => s.key === state.status).label;
+  }
 }
 
 // -------------------------------------------------------------------------
@@ -417,6 +447,69 @@ function setTab(tab) {
 }
 
 // -------------------------------------------------------------------------
+// WhatsApp Alerts settings
+// -------------------------------------------------------------------------
+
+async function loadWhatsAppSettings() {
+  try {
+    const data = await api("/api/settings/whatsapp");
+    state.waSettings = {
+      enabled: !!data.enabled,
+      threshold_minutes: data.threshold_minutes ?? 10,
+      dispatcher_numbers: data.dispatcher_numbers || [],
+    };
+  } catch (err) {
+    console.error("Failed to load WhatsApp settings:", err);
+  }
+  el("wa-toggle-enabled").checked = state.waSettings.enabled;
+  el("wa-threshold-input").value = state.waSettings.threshold_minutes;
+  el("wa-preview-minutes").textContent = state.waSettings.threshold_minutes;
+  renderWaNumbers();
+}
+
+function renderWaNumbers() {
+  const list = el("wa-number-list");
+  list.innerHTML = state.waSettings.dispatcher_numbers.map((number, idx) => `
+    <div class="number-row">
+      <div>
+        <div class="number-value">${escapeHtml(number)}</div>
+        <div class="number-meta">Numéro dispatcher</div>
+      </div>
+      <button class="number-remove-btn" data-idx="${idx}" type="button">Retirer</button>
+    </div>
+  `).join("");
+
+  list.querySelectorAll(".number-remove-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.idx);
+      state.waSettings.dispatcher_numbers.splice(idx, 1);
+      renderWaNumbers();
+    });
+  });
+}
+
+async function saveWhatsAppSettings() {
+  const statusEl = el("wa-status-msg");
+  const saveBtn = el("wa-save-btn");
+  state.waSettings.enabled = el("wa-toggle-enabled").checked;
+  state.waSettings.threshold_minutes = Number(el("wa-threshold-input").value) || 10;
+
+  saveBtn.disabled = true;
+  try {
+    await api("/api/settings/whatsapp", {
+      method: "POST",
+      body: JSON.stringify(state.waSettings),
+    });
+    statusEl.classList.add("show");
+    setTimeout(() => statusEl.classList.remove("show"), 2200);
+  } catch (err) {
+    console.error("Failed to save WhatsApp settings:", err);
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+// -------------------------------------------------------------------------
 // Event wiring
 // -------------------------------------------------------------------------
 
@@ -536,6 +629,29 @@ function wireEvents() {
     el("note-input").value = "";
     await selectConversation(id);
   });
+
+  el("whatsapp-settings-nav-btn").addEventListener("click", () => {
+    switchView("whatsapp-settings");
+  });
+
+  el("wa-threshold-input").addEventListener("input", (e) => {
+    el("wa-preview-minutes").textContent = e.target.value || "0";
+  });
+
+  el("wa-add-number-btn").addEventListener("click", () => {
+    const input = el("wa-new-number-input");
+    const value = input.value.trim();
+    if (!value) return;
+    state.waSettings.dispatcher_numbers.push(value);
+    input.value = "";
+    renderWaNumbers();
+  });
+
+  el("wa-new-number-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") el("wa-add-number-btn").click();
+  });
+
+  el("wa-save-btn").addEventListener("click", saveWhatsAppSettings);
 
   el("sync-btn").addEventListener("click", async () => {
     const btn = el("sync-btn");

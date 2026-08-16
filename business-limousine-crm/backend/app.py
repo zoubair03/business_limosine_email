@@ -292,6 +292,11 @@ def api_reply(conversation_id):
 
     return jsonify({"messages": [row_to_message(m) for m in messages]})
 
+@app.route("/settings/whatsapp")
+def whatsapp_settings():
+    # ajoutez votre décorateur d'auth existant si vous en avez un (ex: @login_required)
+    return render_template("whatsapp_alerts.html")
+
 
 # --------------------------------------------------------------------------
 # Manual sync trigger
