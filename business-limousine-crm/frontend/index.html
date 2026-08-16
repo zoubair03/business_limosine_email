@@ -167,7 +167,10 @@
 
           <div class="detail-tabs">
             <button class="tab-btn active" data-tab="thread">Thread</button>
-            <button class="tab-btn" data-tab="notes">Internal notes</button>
+            <button class="tab-btn" data-tab="notes" id="notes-tab-btn">
+              <span>Internal notes</span>
+              <span class="notes-unread-dot" id="notes-unread-dot" hidden></span>
+            </button>
           </div>
 
           <div class="tab-panel" id="tab-thread">
@@ -224,12 +227,15 @@
     </form>
 
     <div class="auth-demo-hints">
-      <div class="demo-title">Default Staff Credentials:</div>
+      <div class="demo-title">Staff Accounts:</div>
       <div class="demo-account" id="demo-admin-btn">
         <span class="demo-role admin">ADMIN</span> admin@businesslimousine.com / admin123
       </div>
-      <div class="demo-account" id="demo-dispatch-btn">
-        <span class="demo-role dispatcher">DISPATCH</span> dispatcher@businesslimousine.com / dispatch123
+      <div class="demo-account" id="demo-iheb-btn">
+        <span class="demo-role dispatcher">DISPATCH</span> iheb@businesslimousine.com / dispatch123
+      </div>
+      <div class="demo-account" id="demo-zoubair-btn">
+        <span class="demo-role dispatcher">DISPATCH</span> zoubair@businesslimousine.com / dispatch123
       </div>
     </div>
   </div>

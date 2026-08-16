@@ -148,6 +148,13 @@ async function handleLogin(email, password) {
       throw new Error(data.error || "Invalid credentials");
     }
     state.user = data.user;
+    state.status = "ALL"; // Always land on All Conversations
+    state.selectedId = null; // Fresh dashboard on every login
+    state.selectedDetail = null;
+    setTab("thread"); // Always start on Thread tab
+    if (el("panel-title")) el("panel-title").textContent = "All conversations";
+    if (el("detail-empty")) el("detail-empty").hidden = false;
+    if (el("detail-content")) el("detail-content").hidden = true;
     renderUserProfile();
     hideAuthModal();
     await loadConversations();
@@ -164,10 +171,13 @@ async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
   } catch (err) {}
   state.user = null;
-  state.conversations = [];
+  state.status = "ALL"; // Reset view filter to ALL
   state.selectedId = null;
+  state.selectedDetail = null;
+  setTab("thread");
+  if (el("detail-empty")) el("detail-empty").hidden = false;
+  if (el("detail-content")) el("detail-content").hidden = true;
   renderUserProfile();
-  renderConversations();
   showAuthModal("You have been signed out.");
 }
 
@@ -246,6 +256,10 @@ async function loadConversations() {
       const stillExists = state.conversations.some((c) => c.id === state.selectedId);
       if (stillExists) {
         selectConversation(state.selectedId, false);
+      } else {
+        state.selectedId = null;
+        if (el("detail-empty")) el("detail-empty").hidden = false;
+        if (el("detail-content")) el("detail-content").hidden = true;
       }
     }
   } catch (err) {
@@ -289,17 +303,52 @@ function renderConversations() {
 
   list.querySelectorAll(".conversation-row").forEach((row) => {
     row.addEventListener("click", () => {
-      selectConversation(Number(row.dataset.id));
+      selectConversation(Number(row.dataset.id), true, true);
     });
   });
+}
+
+// -------------------------------------------------------------------------
+// Unread Notes Tracking
+// -------------------------------------------------------------------------
+
+function getNotesReadMap() {
+  try {
+    const key = `bl_notes_read_${state.user?.id || "anon"}`;
+    return JSON.parse(localStorage.getItem(key) || "{}");
+  } catch (e) {
+    return {};
+  }
+}
+
+function setConversationNotesRead(convoId) {
+  if (!convoId) return;
+  try {
+    const key = `bl_notes_read_${state.user?.id || "anon"}`;
+    const map = getNotesReadMap();
+    map[convoId] = new Date().toISOString();
+    localStorage.setItem(key, JSON.stringify(map));
+  } catch (e) {}
+}
+
+function hasUnreadNotes(convoId, notes) {
+  if (!notes || notes.length === 0) return false;
+  const readMap = getNotesReadMap();
+  const lastRead = readMap[convoId];
+  if (!lastRead) return true;
+  const lastReadTime = new Date(lastRead).getTime();
+  return notes.some((n) => new Date(n.created_at).getTime() > lastReadTime);
 }
 
 // -------------------------------------------------------------------------
 // Conversation detail
 // -------------------------------------------------------------------------
 
-async function selectConversation(id, reloadDetail = true) {
+async function selectConversation(id, reloadDetail = true, switchTab = false) {
   state.selectedId = id;
+  if (switchTab) {
+    setTab("thread"); // Only switch to Thread tab when selecting a conversation from the manifest
+  }
   document.querySelectorAll(".conversation-row").forEach((row) => {
     row.classList.toggle("selected", Number(row.dataset.id) === id);
   });
@@ -335,6 +384,22 @@ async function selectConversation(id, reloadDetail = true) {
   el("edit-trip-date").value = conversation.trip_date || "";
   el("edit-origin").value = conversation.origin || "";
   el("edit-destination").value = conversation.destination || "";
+
+  // Check for unread notes to show glowing indicator circle
+  const unreadNotesExist = hasUnreadNotes(id, notes);
+  const dotEl = el("notes-unread-dot");
+  if (dotEl) {
+    if (unreadNotesExist && state.tab !== "notes") {
+      dotEl.hidden = false;
+    } else {
+      dotEl.hidden = true;
+    }
+  }
+
+  if (state.tab === "notes") {
+    setConversationNotesRead(id);
+    if (dotEl) dotEl.hidden = true;
+  }
 
   renderThread(messages, conversation);
   renderNotes(notes);
@@ -418,19 +483,27 @@ function renderThread(messages, convo) {
 
 function renderNotes(notes) {
   const notesEl = el("notes-list");
-  if (notes.length === 0) {
+  if (!notes || notes.length === 0) {
     notesEl.innerHTML = `<div class="notes-empty">No internal notes yet. Notes are saved to your staff account.</div>`;
     return;
   }
+
+  const readMap = getNotesReadMap();
+  const lastReadStr = readMap[state.selectedId];
+  const lastReadTime = lastReadStr ? new Date(lastReadStr).getTime() : 0;
+
   notesEl.innerHTML = notes.map((n) => {
     const authorName = escapeHtml(n.author || "Staff");
     const roleClass = (n.author_role || "dispatcher").toLowerCase();
     const roleLabel = escapeHtml(n.author_role || "STAFF");
+    const isUnread = state.tab !== "notes" && lastReadTime > 0 && new Date(n.created_at).getTime() > lastReadTime;
+
     return `
-      <div class="note-item">
+      <div class="note-item ${isUnread ? "unread" : ""}">
         <div class="note-header">
           <span class="note-author-badge">${authorName}</span>
           <span class="note-role-tag ${roleClass}">${roleLabel}</span>
+          ${isUnread ? `<span class="note-unread-tag">New</span>` : ""}
           <span class="note-time">${formatTimestamp(n.created_at)}</span>
         </div>
         <div>${escapeHtml(n.note_text)}</div>
@@ -444,6 +517,15 @@ function setTab(tab) {
   document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   el("tab-thread").hidden = tab !== "thread";
   el("tab-notes").hidden = tab !== "notes";
+
+  if (tab === "notes" && state.selectedId) {
+    setConversationNotesRead(state.selectedId);
+    const dotEl = el("notes-unread-dot");
+    if (dotEl) dotEl.hidden = true;
+    if (state.selectedDetail?.notes) {
+      renderNotes(state.selectedDetail.notes);
+    }
+  }
 }
 
 // -------------------------------------------------------------------------
@@ -522,17 +604,23 @@ function wireEvents() {
     await handleLogin(email, password);
   });
 
-  // Demo credential autofill shortcuts
+  // Staff credential autofill shortcuts
   el("demo-admin-btn")?.addEventListener("click", () => {
     el("login-email").value = "admin@businesslimousine.com";
     el("login-password").value = "admin123";
     handleLogin("admin@businesslimousine.com", "admin123");
   });
 
-  el("demo-dispatch-btn")?.addEventListener("click", () => {
-    el("login-email").value = "dispatcher@businesslimousine.com";
+  el("demo-iheb-btn")?.addEventListener("click", () => {
+    el("login-email").value = "iheb@businesslimousine.com";
     el("login-password").value = "dispatch123";
-    handleLogin("dispatcher@businesslimousine.com", "dispatch123");
+    handleLogin("iheb@businesslimousine.com", "dispatch123");
+  });
+
+  el("demo-zoubair-btn")?.addEventListener("click", () => {
+    el("login-email").value = "zoubair@businesslimousine.com";
+    el("login-password").value = "dispatch123";
+    handleLogin("zoubair@businesslimousine.com", "dispatch123");
   });
 
   // Logout button
@@ -618,16 +706,31 @@ function wireEvents() {
     }
   });
 
-  el("note-add-btn").addEventListener("click", async () => {
+  el("note-add-btn").addEventListener("click", async (e) => {
+    e?.preventDefault?.();
     const id = state.selectedId;
-    const text = el("note-input").value.trim();
+    const input = el("note-input");
+    const text = input.value.trim();
     if (!text) return;
-    await api(`/api/conversations/${id}/notes`, {
-      method: "POST",
-      body: JSON.stringify({ note_text: text }),
-    });
-    el("note-input").value = "";
-    await selectConversation(id);
+    const addBtn = el("note-add-btn");
+    addBtn.disabled = true;
+    try {
+      await api(`/api/conversations/${id}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ note_text: text }),
+      });
+      input.value = "";
+      const detail = await api(`/api/conversations/${id}`);
+      state.selectedDetail = detail;
+      setConversationNotesRead(id);
+      renderNotes(detail.notes);
+      const dotEl = el("notes-unread-dot");
+      if (dotEl) dotEl.hidden = true;
+    } catch (err) {
+      console.error("Failed to add note:", err);
+    } finally {
+      addBtn.disabled = false;
+    }
   });
 
   el("whatsapp-settings-nav-btn").addEventListener("click", () => {
