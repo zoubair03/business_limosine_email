@@ -5,7 +5,12 @@ frontend (frontend/index.html, styles.css, app.js).
 Run with:  python app.py
 """
 from datetime import timedelta
+import json
 import logging
+import os
+import sys
+import threading
+import time
 
 from flask import Flask, jsonify, request, send_from_directory
 
@@ -292,10 +297,138 @@ def api_reply(conversation_id):
 
     return jsonify({"messages": [row_to_message(m) for m in messages]})
 
-@app.route("/settings/whatsapp")
-def whatsapp_settings():
-    # ajoutez votre décorateur d'auth existant si vous en avez un (ex: @login_required)
-    return render_template("whatsapp_alerts.html")
+# --------------------------------------------------------------------------
+# WhatsApp Dispatch Alert Settings API
+# --------------------------------------------------------------------------
+
+@app.get("/api/settings/whatsapp")
+@login_required
+def api_get_whatsapp_settings():
+    from whatsapp_notifier import WhatsAppNotifier
+    notifier = WhatsAppNotifier()
+    twilio_status = notifier.get_status()
+
+    with db_session() as conn:
+        enabled_setting = models.get_setting(conn, "whatsapp_alerts_enabled")
+        if enabled_setting is not None:
+            enabled = str(enabled_setting).lower() in ("1", "true", "yes", "on")
+        else:
+            enabled = Config.WHATSAPP_ALERTS_ENABLED
+
+        threshold_setting = models.get_setting(conn, "whatsapp_alert_threshold_minutes")
+        try:
+            threshold_minutes = int(threshold_setting) if threshold_setting else Config.WHATSAPP_ALERT_THRESHOLD_MINUTES
+        except (ValueError, TypeError):
+            threshold_minutes = Config.WHATSAPP_ALERT_THRESHOLD_MINUTES
+
+        numbers_setting = models.get_setting(conn, "dispatcher_whatsapp_numbers")
+        if numbers_setting:
+            try:
+                loaded = json.loads(numbers_setting)
+                # Clean up any items that were saved as Python repr strings e.g. "{'type': 'telegram', ...}"
+                dispatcher_numbers = []
+                for item in loaded:
+                    if isinstance(item, dict):
+                        dispatcher_numbers.append(item)
+                    elif isinstance(item, str):
+                        s = item.strip()
+                        # Try to re-parse if it looks like a Python repr dict
+                        if s.startswith("{") and "'" in s:
+                            try:
+                                import ast
+                                parsed = ast.literal_eval(s)
+                                if isinstance(parsed, dict):
+                                    dispatcher_numbers.append(parsed)
+                                    continue
+                            except Exception:
+                                pass
+                        dispatcher_numbers.append(s)
+            except Exception:
+                dispatcher_numbers = [n.strip() for n in numbers_setting.split(",") if n.strip()]
+        else:
+            raw_numbers = Config.DISPATCHER_WHATSAPP_NUMBERS or ""
+            dispatcher_numbers = [n.strip() for n in raw_numbers.split(",") if n.strip()]
+
+    status_info = notifier.get_status()
+    return jsonify({
+        "enabled": enabled,
+        "threshold_minutes": threshold_minutes,
+        "dispatcher_numbers": dispatcher_numbers,
+        "gateway": status_info,
+        "provider": status_info.get("provider", "telegram"),
+        "telegram": status_info.get("telegram"),
+        "callmebot": status_info.get("callmebot"),
+    })
+
+
+@app.post("/api/settings/whatsapp")
+@roles_required("ADMIN", "DISPATCHER")
+def api_save_whatsapp_settings():
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get("enabled", True))
+    try:
+        threshold_minutes = max(1, min(1440, int(data.get("threshold_minutes", 10))))
+    except (ValueError, TypeError):
+        threshold_minutes = 10
+
+    raw_numbers = data.get("dispatcher_numbers", [])
+    if isinstance(raw_numbers, str):
+        numbers = [n.strip() for n in raw_numbers.split(",") if n.strip()]
+    elif isinstance(raw_numbers, list):
+        # Preserve dict objects (Telegram entries) as-is; only stringify plain strings
+        numbers = []
+        for n in raw_numbers:
+            if isinstance(n, dict):
+                numbers.append(n)          # keep {"type":"telegram","chat_id":...}
+            elif isinstance(n, str) and n.strip():
+                numbers.append(n.strip())  # plain phone string
+    else:
+        numbers = []
+
+    with db_session() as conn:
+        models.set_setting(conn, "whatsapp_alerts_enabled", "true" if enabled else "false")
+        models.set_setting(conn, "whatsapp_alert_threshold_minutes", str(threshold_minutes))
+        models.set_setting(conn, "dispatcher_whatsapp_numbers", json.dumps(numbers, ensure_ascii=False))
+
+    return jsonify({
+        "success": True,
+        "message": "Paramètres d'alertes WhatsApp enregistrés avec succès.",
+        "settings": {
+            "enabled": enabled,
+            "threshold_minutes": threshold_minutes,
+            "dispatcher_numbers": numbers,
+        }
+    })
+
+
+@app.post("/api/settings/whatsapp/test")
+@roles_required("ADMIN", "DISPATCHER")
+def api_test_whatsapp_alert():
+    data = request.get_json(silent=True) or {}
+    phone_number = (data.get("phone_number") or "").strip()
+
+    with db_session() as conn:
+        if not phone_number:
+            numbers_setting = models.get_setting(conn, "dispatcher_whatsapp_numbers")
+            if numbers_setting:
+                try:
+                    numbers = json.loads(numbers_setting)
+                    if numbers:
+                        phone_number = numbers[0]
+                except Exception:
+                    pass
+        if not phone_number and Config.DISPATCHER_WHATSAPP_NUMBERS:
+            phone_number = Config.DISPATCHER_WHATSAPP_NUMBERS.split(",")[0].strip()
+
+    if not phone_number:
+        return jsonify({"success": False, "error": "Aucun numéro de téléphone destinataire fourni."}), 400
+
+    apikey = (data.get("apikey") or "").strip()
+    from whatsapp_notifier import WhatsAppNotifier
+    notifier = WhatsAppNotifier()
+    result = notifier.send_test_alert(phone_number, apikey=apikey)
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
 
 
 # --------------------------------------------------------------------------
@@ -306,12 +439,49 @@ def whatsapp_settings():
 @login_required
 def api_sync():
     from email_fetcher import run_once
+    from pending_request_watcher import check_pending_requests
     try:
         processed = run_once()
+        # Immediately check and fire any due Telegram alerts
+        try:
+            check_pending_requests()
+        except Exception as alert_err:
+            logger.warning("Post-sync alert check warning: %s", alert_err)
     except Exception as exc:
         logger.exception("Manual sync failed")
         return jsonify({"error": str(exc)}), 502
     return jsonify({"processed": processed})
+
+
+# --------------------------------------------------------------------------
+# Background Alert Watcher Thread (Embedded in Flask app)
+# --------------------------------------------------------------------------
+
+_watcher_lock = threading.Lock()
+_watcher_running = False
+
+def _start_background_watcher():
+    global _watcher_running
+    with _watcher_lock:
+        if _watcher_running:
+            return
+        _watcher_running = True
+
+    def _watcher_loop():
+        time.sleep(3)  # brief startup delay
+        logger.info("Embedded Dispatch Alert Watcher loop is active (checking every 15s).")
+        while True:
+            try:
+                from pending_request_watcher import check_pending_requests
+                sent = check_pending_requests()
+                if sent > 0:
+                    logger.info("Embedded watcher sent %s Telegram dispatch alert(s).", sent)
+            except Exception as e:
+                logger.debug("Embedded watcher loop tick: %s", e)
+            time.sleep(15)
+
+    thread = threading.Thread(target=_watcher_loop, daemon=True, name="DispatchAlertWatcher")
+    thread.start()
 
 
 # --------------------------------------------------------------------------
@@ -322,6 +492,11 @@ def setup_app():
     init_db()
     with db_session() as conn:
         models.ensure_default_admin(conn)
+    
+    # In Flask development mode, only start the watcher in the actual worker process
+    is_main_worker = os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug
+    if is_main_worker and not _watcher_running:
+        _start_background_watcher()
 
 
 setup_app()

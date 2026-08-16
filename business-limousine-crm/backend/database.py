@@ -80,6 +80,13 @@ CREATE TABLE IF NOT EXISTS sync_state (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- System-wide application settings (e.g., WhatsApp dispatch alert rules)
+CREATE TABLE IF NOT EXISTS settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 
@@ -119,6 +126,10 @@ def init_db():
             pass
         try:
             conn.execute("ALTER TABLE messages ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE conversations ADD COLUMN whatsapp_alert_sent INTEGER DEFAULT 0")
         except Exception:
             pass
 

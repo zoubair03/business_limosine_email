@@ -21,16 +21,19 @@
       </div>
     </div>
 
+    <div class="sidebar-section-heading">Manifest</div>
     <nav class="status-nav" id="status-nav">
       <!-- populated by app.js -->
     </nav>
 
-    <nav class="settings-nav">
-      <button class="status-nav-item" id="whatsapp-settings-nav-btn" data-view="whatsapp-settings">
+    <div class="sidebar-section-heading">Automation</div>
+    <nav class="system-nav">
+      <button class="status-nav-item" id="nav-whatsapp-btn" data-view="whatsapp-settings">
         <span class="label">
-          <span class="dot dot-static"></span>
-          WhatsApp Alerts
+          <span class="dot dot-wa"></span>
+          Telegram Alerts
         </span>
+        <span class="nav-badge-pill" id="wa-active-pill">ACTIVE</span>
       </button>
     </nav>
 
@@ -57,63 +60,172 @@
   <main class="main">
     <header class="topbar">
       <div class="topbar-title">
-        <span class="eyebrow">Manifest</span>
+        <span class="eyebrow" id="topbar-eyebrow">Manifest</span>
         <h1 id="panel-title">All conversations</h1>
       </div>
-      <div class="search-wrap">
+      <div class="search-wrap" id="topbar-search-wrap">
         <input id="search-input" type="text" placeholder="Search name, email, route…" autocomplete="off" />
+      </div>
+      <div class="topbar-actions" id="topbar-actions" hidden>
+        <button class="btn-topbar-secondary" id="btn-back-to-manifest">← Back to Manifest</button>
       </div>
     </header>
 
+    <!-- Dispatch Alerts Operations Cockpit -->
     <section class="settings-view" id="whatsapp-settings-view" hidden>
-      <p class="settings-lede">Prévenez l'équipe par WhatsApp lorsqu'une demande reste en attente trop longtemps sans réponse.</p>
-
-      <div class="settings-card">
-        <div class="settings-card-head">
+      <div class="settings-container">
+        
+        <div class="settings-header-banner">
           <div>
-            <div class="settings-card-title">Activer les alertes</div>
-            <div class="settings-card-desc">Envoie un message WhatsApp aux dispatchers listés ci-dessous dès qu'une demande dépasse le délai fixé.</div>
+            <h2 class="settings-title">Telegram & Mobile Dispatch Alerts</h2>
+            <p class="settings-subtitle">Instant push alerts sent to dispatchers' phones and desktop apps when a VIP booking remains unreplied (100% Free & Official).</p>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="wa-toggle-enabled" checked>
-            <span class="switch-track"></span>
-          </label>
+          <div class="twilio-badge" id="twilio-connection-badge">
+            <span class="status-indicator-dot online"></span>
+            <span id="twilio-badge-text">Telegram Bot Connected</span>
+          </div>
         </div>
 
-        <div class="settings-divider"></div>
+        <div class="settings-grid">
+          
+          <!-- Left Column: Rules & Numbers -->
+          <div class="settings-col">
+            
+            <!-- Alert Rules Card -->
+            <div class="settings-card">
+              <div class="settings-card-head">
+                <div>
+                  <div class="settings-card-title">Automated Alerts</div>
+                  <div class="settings-card-desc">Send push alerts automatically when unreplied requests exceed the delay threshold.</div>
+                </div>
+                <label class="switch" title="Toggle Alerts">
+                  <input type="checkbox" id="wa-toggle-enabled" checked>
+                  <span class="switch-track"></span>
+                </label>
+              </div>
 
-        <label class="field-label" for="wa-threshold-input">Délai avant alerte</label>
-        <div class="threshold-row">
-          <input type="number" id="wa-threshold-input" value="10" min="1" max="120">
-          <span class="unit">minutes sans réponse</span>
+              <div class="settings-divider"></div>
+
+              <label class="field-label" for="wa-threshold-input">Trigger Threshold (Delay)</label>
+              <div class="threshold-control-group">
+                <input type="range" id="wa-threshold-slider" min="1" max="60" value="10" class="threshold-slider" />
+                <div class="threshold-row">
+                  <input type="number" id="wa-threshold-input" value="10" min="1" max="120">
+                  <span class="unit">minutes without dispatcher reply</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dispatcher Recipients Card -->
+            <div class="settings-card">
+              <div class="settings-card-head">
+                <div>
+                  <div class="settings-card-title">On-Duty Dispatchers (Recipients)</div>
+                  <div class="settings-card-desc">Telegram Chat IDs and mobile numbers receiving instant push alerts.</div>
+                </div>
+                <a href="https://t.me/BL_Dispatch_Bot" target="_blank" rel="noopener noreferrer" class="btn-get-key" style="background:rgba(0, 136, 204, 0.12); border-color:rgba(0, 136, 204, 0.35); color:#0088cc;" title="Open bot in Telegram">
+                  <span>✈️ @BL_Dispatch_Bot</span>
+                </a>
+              </div>
+
+              <div class="number-list" id="wa-number-list">
+                <!-- Populated by app.js -->
+              </div>
+
+              <div class="add-row callmebot-add-row">
+                <input type="text" id="wa-new-number-input" placeholder="Telegram Chat ID (e.g. 8000019066)" />
+                <button class="btn-secondary" id="wa-add-number-btn" type="button">+ Add Dispatcher</button>
+              </div>
+              <div class="field-hint">💡 To add a new team member: have them open <a href="https://t.me/BL_Dispatch_Bot" target="_blank" style="color:var(--gold); text-decoration:underline;"><b>@BL_Dispatch_Bot</b></a>, click <b>Start</b>, and paste their ID from <b>@userinfobot</b>.</div>
+            </div>
+
+            <!-- Gateway Status Card -->
+            <div class="settings-card twilio-card">
+              <div class="settings-card-head">
+                <div>
+                  <div class="settings-card-title" id="gateway-card-title">Telegram Official Bot Gateway</div>
+                  <div class="settings-card-desc">Official Telegram Bot API — Instant &lt;0.2s push notifications with sounds.</div>
+                </div>
+              </div>
+              <div class="twilio-meta-grid">
+                <div class="meta-item">
+                  <span class="meta-label">Bot Username</span>
+                  <span class="meta-val mono" id="twilio-sid-display" style="color: #0088cc;">@BL_Dispatch_Bot</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Gateway Health</span>
+                  <span class="meta-val mono" id="twilio-sender-display" style="color: #22C55E;">🟢 Connected / Active</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Right Column: Live Smartphone Simulator & Live Test -->
+          <div class="settings-col">
+            
+            <div class="phone-mockup-card">
+              <div class="phone-mockup-header">
+                <span class="phone-app-title">📱 Live Dispatch Push Alert Preview</span>
+                <span class="phone-time-indicator mono">Realtime</span>
+              </div>
+              
+              <div class="phone-screen">
+                <div class="phone-chat-header">
+                  <div class="phone-avatar" style="background:#0088cc;">BL</div>
+                  <div>
+                    <div class="phone-contact-name">Business Limousine Dispatch</div>
+                    <div class="phone-contact-status" style="color:#0088cc;">Telegram Official Bot</div>
+                  </div>
+                </div>
+
+                <div class="phone-chat-body">
+                  <div class="whatsapp-bubble" id="whatsapp-preview-bubble" style="background:#182533; border-left: 3px solid #0088cc;">
+                    <div class="wa-bubble-header" style="color:#64B5F6;">🚨 <b>BUSINESS LIMOUSINE — DEMANDE EN ATTENTE</b></div>
+                    <div class="wa-bubble-divider"></div>
+                    <div class="wa-bubble-row">👤 <b>Client :</b> <span id="wa-preview-name">Sophia Laurent</span></div>
+                    <div class="wa-bubble-row">✉️ <b>Email :</b> <span id="wa-preview-email">sophia.laurent@luxury-corp.ch</span></div>
+                    <div class="wa-bubble-row">📍 <b>Trajet :</b> <span id="wa-preview-route">Brussels Airport ➔ City Center</span></div>
+                    <div class="wa-bubble-row">📅 <b>Date :</b> <span id="wa-preview-date">10 Septembre — 14:30</span></div>
+                    <div class="wa-bubble-divider"></div>
+                    <div class="wa-bubble-time" style="color:#EF4444;">⏱️ En attente depuis : <b><span id="wa-preview-minutes">10</span> minutes sans réponse</b></div>
+                    
+                    <!-- Telegram Action Button -->
+                    <div style="margin-top: 10px; padding: 8px 12px; background: rgba(0, 136, 204, 0.2); border: 1px solid rgba(0, 136, 204, 0.5); border-radius: 6px; text-align: center; color: #64B5F6; font-size: 11.5px; font-weight: 700;">
+                      🚀 Ouvrir la Console Dispatch
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Test Trigger Box -->
+              <div class="phone-test-box">
+                <div class="phone-test-title">Send Test Dispatch Alert</div>
+                <div class="phone-test-desc">Verify instant push alert delivery to your phone or desktop in 0.1s.</div>
+                <div class="phone-test-row">
+                  <input type="text" id="wa-test-number-input" placeholder="Telegram Chat ID (e.g. 8000019066)" value="8000019066" />
+                  <button class="btn-primary" id="wa-send-test-btn" type="button" style="background:#0088cc;">
+                    <span id="wa-test-btn-text">⚡ Send Test Alert</span>
+                  </button>
+                </div>
+                <div class="test-feedback" id="wa-test-feedback" hidden></div>
+              </div>
+            </div>
+
+          </div>
+
         </div>
-      </div>
 
-      <div class="settings-card">
-        <div class="settings-card-title" style="margin-bottom:4px;">Numéros dispatchers</div>
-        <div class="settings-card-desc" style="margin-bottom:18px;">Ces numéros doivent avoir rejoint le canal WhatsApp Business pour recevoir les alertes.</div>
-
-        <div class="number-list" id="wa-number-list"></div>
-
-        <div class="add-row">
-          <input type="text" id="wa-new-number-input" placeholder="+32 4XX XX XX XX">
-          <button class="btn-ghost" id="wa-add-number-btn" type="button">Ajouter</button>
+        <div class="settings-footer-bar">
+          <div class="settings-save-status" id="wa-status-msg">
+            <span class="settings-status-dot"></span>
+            <span id="wa-status-text">Settings saved to database</span>
+          </div>
+          <div class="settings-actions">
+            <button class="btn-primary" id="wa-save-btn" type="button">Enregistrer les modifications</button>
+          </div>
         </div>
-      </div>
 
-      <div class="settings-preview-card">
-        <div class="settings-preview-label">Aperçu du message</div>
-        <div class="settings-bubble">
-          ⏰ <b>Demande en attente</b><br>
-          Client : Adèle Agache<br>
-          Email : adele.agache@ef.com<br>
-          En attente depuis <span id="wa-preview-minutes">10</span> minutes sans réponse.
-        </div>
-      </div>
-
-      <div class="settings-footer-row">
-        <span class="settings-status-msg" id="wa-status-msg"><span class="settings-status-dot"></span>Réglages enregistrés</span>
-        <button class="btn-primary" id="wa-save-btn" type="button">Enregistrer</button>
       </div>
     </section>
 

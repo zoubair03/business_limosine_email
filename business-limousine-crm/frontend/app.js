@@ -219,19 +219,331 @@ function renderStatusNav() {
 function switchView(view) {
   state.view = view;
 
-  el("conversations-content").hidden = view !== "conversations";
-  el("whatsapp-settings-view").hidden = view !== "whatsapp-settings";
-
-  el("whatsapp-settings-nav-btn").classList.toggle("active", view === "whatsapp-settings");
-  document.querySelectorAll("#status-nav .status-nav-item").forEach((btn) => {
-    btn.classList.toggle("active", view === "conversations" && btn.dataset.status === state.status);
-  });
+  const convContent = el("conversations-content");
+  const waView = el("whatsapp-settings-view");
+  const waNavBtn = el("nav-whatsapp-btn");
+  const searchWrap = el("topbar-search-wrap");
+  const topbarActions = el("topbar-actions");
+  const eyebrowEl = el("topbar-eyebrow");
+  const titleEl = el("panel-title");
 
   if (view === "whatsapp-settings") {
-    el("panel-title").textContent = "WhatsApp Alerts";
+    if (convContent) convContent.hidden = true;
+    if (waView) waView.hidden = false;
+    if (waNavBtn) waNavBtn.classList.add("active");
+    document.querySelectorAll("#status-nav .status-nav-item").forEach((b) => b.classList.remove("active"));
+    
+    if (searchWrap) searchWrap.hidden = true;
+    if (topbarActions) topbarActions.hidden = false;
+    if (eyebrowEl) eyebrowEl.textContent = "AUTOMATION & ALERTS";
+    if (titleEl) titleEl.textContent = "WhatsApp Dispatch Alerts";
+
     loadWhatsAppSettings();
   } else {
-    el("panel-title").textContent = STATUSES.find((s) => s.key === state.status).label;
+    if (convContent) convContent.hidden = false;
+    if (waView) waView.hidden = true;
+    if (waNavBtn) waNavBtn.classList.remove("active");
+    
+    const activeStatusBtn = document.querySelector(`#status-nav .status-nav-item[data-status="${state.status}"]`);
+    if (activeStatusBtn) activeStatusBtn.classList.add("active");
+
+    if (searchWrap) searchWrap.hidden = false;
+    if (topbarActions) topbarActions.hidden = true;
+    if (eyebrowEl) eyebrowEl.textContent = "Manifest";
+    
+    const currStatus = STATUSES.find((s) => s.key === state.status);
+    if (titleEl) titleEl.textContent = currStatus ? currStatus.label : "All conversations";
+  }
+}
+
+// -------------------------------------------------------------------------
+// WhatsApp Alerts Operations & Settings
+// -------------------------------------------------------------------------
+
+function getCountryBadge(numberStr) {
+  const s = String(numberStr || "").trim();
+  if (s.startsWith("+32") || s.startsWith("0032")) return "🇧🇪 BE";
+  if (s.startsWith("+33") || s.startsWith("0033")) return "🇫🇷 FR";
+  if (s.startsWith("+41") || s.startsWith("0041")) return "🇨🇭 CH";
+  if (s.startsWith("+1") || s.startsWith("001")) return "🇺🇸 US";
+  if (s.startsWith("+44") || s.startsWith("0044")) return "🇬🇧 UK";
+  if (s.startsWith("+49") || s.startsWith("0049")) return "🇩🇪 DE";
+  if (s.startsWith("+39") || s.startsWith("0039")) return "🇮🇹 IT";
+  if (s.startsWith("+34") || s.startsWith("0034")) return "🇪🇸 ES";
+  if (s.startsWith("+216") || s.startsWith("00216")) return "🇹🇳 TN";
+  return "🌐 INT";
+}
+
+function parseDispatcher(item) {
+  if (typeof item === "object" && item !== null) {
+    if (item.type === "telegram" || item.chat_id) {
+      return { type: "telegram", id: String(item.chat_id || item.id || "").trim(), label: item.label || "Telegram Dispatcher" };
+    }
+    const phone = String(item.phone || "").trim();
+    const apikey = String(item.apikey || "").trim();
+    // Auto-promote: if stored as { phone: "7982805639", apikey: "" } it's actually a Telegram ID
+    if (/^\d{6,}$/.test(phone) && !phone.startsWith("+") && !apikey) {
+      return { type: "telegram", id: phone, label: "Telegram Dispatcher" };
+    }
+    return { type: "whatsapp", phone, apikey };
+  }
+  const s = String(item || "").trim();
+  if (/^\d{6,}$/.test(s) && !s.startsWith("+")) {
+    return { type: "telegram", id: s, label: "Telegram Dispatcher" };
+  }
+  if (s.includes(":")) {
+    const parts = s.split(":");
+    return { type: "whatsapp", phone: parts[0].trim(), apikey: parts[1].trim() };
+  }
+  return { type: "whatsapp", phone: s, apikey: "" };
+}
+
+async function loadWhatsAppSettings() {
+  try {
+    const data = await api("/api/settings/whatsapp");
+    state.waSettings = {
+      enabled: data.enabled !== false,
+      threshold_minutes: data.threshold_minutes || 10,
+      dispatcher_numbers: data.dispatcher_numbers && data.dispatcher_numbers.length > 0 ? data.dispatcher_numbers : ["8000019066"],
+    };
+
+    const toggle = el("wa-toggle-enabled");
+    if (toggle) toggle.checked = state.waSettings.enabled;
+
+    const pill = el("wa-active-pill");
+    if (pill) {
+      pill.textContent = state.waSettings.enabled ? "ACTIVE" : "PAUSED";
+      pill.style.color = state.waSettings.enabled ? "#25D366" : "#EAB308";
+    }
+
+    const threshInput = el("wa-threshold-input");
+    const threshSlider = el("wa-threshold-slider");
+    const previewMins = el("wa-preview-minutes");
+    if (threshInput) threshInput.value = state.waSettings.threshold_minutes;
+    if (threshSlider) threshSlider.value = state.waSettings.threshold_minutes;
+    if (previewMins) previewMins.textContent = state.waSettings.threshold_minutes;
+
+    const gateway = data.gateway || {};
+    const provider = data.provider || gateway.provider || "telegram";
+    const tgInfo = data.telegram || gateway.telegram || {};
+
+    const cardTitle = el("gateway-card-title");
+    const sidEl = el("twilio-sid-display");
+    const senderEl = el("twilio-sender-display");
+    const badgeText = el("twilio-badge-text");
+    const badgeDot = document.querySelector("#twilio-connection-badge .status-indicator-dot");
+
+    if (provider === "telegram" || tgInfo.configured) {
+      if (cardTitle) cardTitle.textContent = "Telegram Official Bot Gateway";
+      if (sidEl) {
+        sidEl.textContent = `@${tgInfo.bot_username || "BL_Dispatch_Bot"}`;
+        sidEl.style.color = "#0088cc";
+      }
+      if (senderEl) {
+        senderEl.textContent = "🟢 Connected (< 0.2s Instant Push)";
+        senderEl.style.color = "#22C55E";
+      }
+
+      if (badgeText) badgeText.textContent = "Telegram Bot Active";
+      if (badgeDot) badgeDot.className = "status-indicator-dot online";
+    } else {
+      if (cardTitle) cardTitle.textContent = "CallMeBot Gateway";
+      if (sidEl) sidEl.textContent = "CallMeBot Active";
+      if (senderEl) senderEl.textContent = "Ready";
+      if (badgeText) badgeText.textContent = "Gateway Ready";
+      if (badgeDot) badgeDot.className = "status-indicator-dot online";
+    }
+
+    renderWaNumbers();
+  } catch (err) {
+    console.error("Failed to load WhatsApp settings:", err);
+  }
+}
+
+function renderWaNumbers() {
+  const container = el("wa-number-list");
+  if (!container) return;
+
+  const rawList = state.waSettings.dispatcher_numbers && state.waSettings.dispatcher_numbers.length > 0 
+    ? state.waSettings.dispatcher_numbers 
+    : ["8000019066"];
+
+  container.innerHTML = rawList.map((item, idx) => {
+    const d = parseDispatcher(item);
+    if (d.type === "telegram") {
+      return `
+        <div class="number-item" style="border-left: 3px solid #0088cc;">
+          <div class="number-item-left">
+            <span class="number-badge-country" style="background:rgba(0,136,204,0.15); color:#0088cc; border-color:rgba(0,136,204,0.3);">✈️ TG</span>
+            <span class="number-text">ID: ${escapeHtml(d.id)}</span>
+            <span class="number-key-badge" style="background:#F0F9FF; border-color:#BAE6FD; color:#0369A1;">👤 ${escapeHtml(d.label)}</span>
+          </div>
+          <button class="number-remove-btn" type="button" data-index="${idx}">Remove</button>
+        </div>
+      `;
+    }
+
+    const maskedKey = d.apikey ? (d.apikey.length > 3 ? "••••" + d.apikey.slice(-3) : d.apikey) : "Key Not Set";
+    const keyClass = d.apikey ? "number-key-badge" : "number-key-badge error";
+
+    return `
+      <div class="number-item">
+        <div class="number-item-left">
+          <span class="number-badge-country">${getCountryBadge(d.phone)}</span>
+          <span class="number-text">${escapeHtml(d.phone)}</span>
+          <span class="${keyClass}">🔑 ${escapeHtml(maskedKey)}</span>
+        </div>
+        <button class="number-remove-btn" type="button" data-index="${idx}">Remove</button>
+      </div>
+    `;
+  }).join("");
+
+  container.querySelectorAll(".number-remove-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const index = Number(btn.dataset.index);
+      state.waSettings.dispatcher_numbers.splice(index, 1);
+      renderWaNumbers();
+      await silentSaveDispatchers();
+      // Show brief confirmation
+      const feedback = el("wa-test-feedback");
+      if (feedback) {
+        feedback.textContent = "✓ Dispatcher removed and saved.";
+        feedback.className = "test-feedback ok";
+        feedback.hidden = false;
+        setTimeout(() => { feedback.hidden = true; }, 2500);
+      }
+    });
+  });
+}
+
+// Auto-persist the current dispatcher list to the backend silently
+async function silentSaveDispatchers() {
+  try {
+    const toggle = el("wa-toggle-enabled");
+    const threshInput = el("wa-threshold-input");
+    await api("/api/settings/whatsapp", {
+      method: "POST",
+      body: JSON.stringify({
+        enabled: toggle ? toggle.checked : true,
+        threshold_minutes: threshInput ? parseInt(threshInput.value, 10) || 10 : 10,
+        dispatcher_numbers: state.waSettings.dispatcher_numbers || [],
+      }),
+    });
+  } catch (err) {
+    console.warn("Auto-save dispatchers failed:", err.message);
+  }
+}
+
+async function saveWhatsAppSettings() {
+  const saveBtn = el("wa-save-btn");
+  const statusMsg = el("wa-status-msg");
+  const statusText = el("wa-status-text");
+  
+  if (saveBtn) saveBtn.disabled = true;
+
+  const toggle = el("wa-toggle-enabled");
+  const threshInput = el("wa-threshold-input");
+
+  const payload = {
+    enabled: toggle ? toggle.checked : true,
+    threshold_minutes: threshInput ? parseInt(threshInput.value, 10) || 10 : 10,
+    dispatcher_numbers: state.waSettings.dispatcher_numbers || [],
+  };
+
+  try {
+    const res = await api("/api/settings/whatsapp", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    state.waSettings.enabled = payload.enabled;
+    state.waSettings.threshold_minutes = payload.threshold_minutes;
+
+    const pill = el("wa-active-pill");
+    if (pill) {
+      pill.textContent = payload.enabled ? "ACTIVE" : "PAUSED";
+      pill.style.color = payload.enabled ? "#25D366" : "#EAB308";
+    }
+
+    if (statusMsg) {
+      if (statusText) statusText.textContent = res.message || "Paramètres enregistrés.";
+      statusMsg.classList.add("show");
+      setTimeout(() => statusMsg.classList.remove("show"), 3500);
+    }
+  } catch (err) {
+    if (statusMsg) {
+      if (statusText) statusText.textContent = `Erreur : ${err.message}`;
+      statusMsg.classList.add("show");
+    }
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+async function sendTestWhatsAppAlert() {
+  const testInput = el("wa-test-number-input");
+  const testBtn = el("wa-send-test-btn");
+  const testBtnText = el("wa-test-btn-text");
+  const feedbackEl = el("wa-test-feedback");
+
+  let rawTarget = testInput ? testInput.value.trim() : "";
+  let phone = "";
+  let apikey = "";
+
+  if (rawTarget) {
+    const parsed = parseDispatcher(rawTarget);
+    if (parsed.type === "telegram") {
+      // Telegram Chat ID — use id directly as the phone_number field
+      phone = parsed.id;
+    } else {
+      phone = parsed.phone;
+      apikey = parsed.apikey;
+    }
+  } else if (state.waSettings.dispatcher_numbers && state.waSettings.dispatcher_numbers.length > 0) {
+    const parsed = parseDispatcher(state.waSettings.dispatcher_numbers[0]);
+    if (parsed.type === "telegram") {
+      phone = parsed.id;
+      if (testInput) testInput.value = phone;
+    } else {
+      phone = parsed.phone;
+      apikey = parsed.apikey;
+      if (testInput) testInput.value = phone;
+    }
+  }
+
+  if (!phone) {
+    if (feedbackEl) {
+      feedbackEl.textContent = "Please enter a Telegram Chat ID or phone number.";
+      feedbackEl.className = "test-feedback error";
+      feedbackEl.hidden = false;
+    }
+    return;
+  }
+
+  if (testBtn) testBtn.disabled = true;
+  if (testBtnText) testBtnText.textContent = "Sending...";
+  if (feedbackEl) feedbackEl.hidden = true;
+
+  try {
+    const result = await api("/api/settings/whatsapp/test", {
+      method: "POST",
+      body: JSON.stringify({ phone_number: phone, apikey }),
+    });
+
+    if (feedbackEl) {
+      feedbackEl.textContent = result.message || `Test message sent successfully to ${phone}!`;
+      feedbackEl.className = "test-feedback ok";
+      feedbackEl.hidden = false;
+    }
+  } catch (err) {
+    if (feedbackEl) {
+      feedbackEl.textContent = `Error: ${err.message}`;
+      feedbackEl.className = "test-feedback error";
+      feedbackEl.hidden = false;
+    }
+  } finally {
+    if (testBtn) testBtn.disabled = false;
+    if (testBtnText) testBtnText.textContent = "⚡ Send Test Alert";
   }
 }
 
@@ -528,68 +840,7 @@ function setTab(tab) {
   }
 }
 
-// -------------------------------------------------------------------------
-// WhatsApp Alerts settings
-// -------------------------------------------------------------------------
 
-async function loadWhatsAppSettings() {
-  try {
-    const data = await api("/api/settings/whatsapp");
-    state.waSettings = {
-      enabled: !!data.enabled,
-      threshold_minutes: data.threshold_minutes ?? 10,
-      dispatcher_numbers: data.dispatcher_numbers || [],
-    };
-  } catch (err) {
-    console.error("Failed to load WhatsApp settings:", err);
-  }
-  el("wa-toggle-enabled").checked = state.waSettings.enabled;
-  el("wa-threshold-input").value = state.waSettings.threshold_minutes;
-  el("wa-preview-minutes").textContent = state.waSettings.threshold_minutes;
-  renderWaNumbers();
-}
-
-function renderWaNumbers() {
-  const list = el("wa-number-list");
-  list.innerHTML = state.waSettings.dispatcher_numbers.map((number, idx) => `
-    <div class="number-row">
-      <div>
-        <div class="number-value">${escapeHtml(number)}</div>
-        <div class="number-meta">Numéro dispatcher</div>
-      </div>
-      <button class="number-remove-btn" data-idx="${idx}" type="button">Retirer</button>
-    </div>
-  `).join("");
-
-  list.querySelectorAll(".number-remove-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const idx = Number(btn.dataset.idx);
-      state.waSettings.dispatcher_numbers.splice(idx, 1);
-      renderWaNumbers();
-    });
-  });
-}
-
-async function saveWhatsAppSettings() {
-  const statusEl = el("wa-status-msg");
-  const saveBtn = el("wa-save-btn");
-  state.waSettings.enabled = el("wa-toggle-enabled").checked;
-  state.waSettings.threshold_minutes = Number(el("wa-threshold-input").value) || 10;
-
-  saveBtn.disabled = true;
-  try {
-    await api("/api/settings/whatsapp", {
-      method: "POST",
-      body: JSON.stringify(state.waSettings),
-    });
-    statusEl.classList.add("show");
-    setTimeout(() => statusEl.classList.remove("show"), 2200);
-  } catch (err) {
-    console.error("Failed to save WhatsApp settings:", err);
-  } finally {
-    saveBtn.disabled = false;
-  }
-}
 
 // -------------------------------------------------------------------------
 // Event wiring
@@ -733,28 +984,132 @@ function wireEvents() {
     }
   });
 
-  el("whatsapp-settings-nav-btn").addEventListener("click", () => {
-    switchView("whatsapp-settings");
-  });
+  const navWaBtn = el("nav-whatsapp-btn") || el("whatsapp-settings-nav-btn");
+  if (navWaBtn) {
+    navWaBtn.addEventListener("click", () => {
+      switchView("whatsapp-settings");
+    });
+  }
 
-  el("wa-threshold-input").addEventListener("input", (e) => {
-    el("wa-preview-minutes").textContent = e.target.value || "0";
-  });
+  const backManifestBtn = el("btn-back-to-manifest");
+  if (backManifestBtn) {
+    backManifestBtn.addEventListener("click", () => {
+      switchView("conversations");
+    });
+  }
 
-  el("wa-add-number-btn").addEventListener("click", () => {
-    const input = el("wa-new-number-input");
-    const value = input.value.trim();
-    if (!value) return;
-    state.waSettings.dispatcher_numbers.push(value);
-    input.value = "";
+  const toggleWa = el("wa-toggle-enabled");
+  if (toggleWa) {
+    toggleWa.addEventListener("change", (e) => {
+      const pill = el("wa-active-pill");
+      if (pill) {
+        pill.textContent = e.target.checked ? "ACTIVE" : "PAUSED";
+        pill.style.color = e.target.checked ? "#25D366" : "#EAB308";
+      }
+    });
+  }
+
+  const threshSlider = el("wa-threshold-slider");
+  const threshInput = el("wa-threshold-input");
+  const threshPreview = el("wa-preview-minutes");
+
+  if (threshSlider) {
+    threshSlider.addEventListener("input", (e) => {
+      if (threshInput) threshInput.value = e.target.value;
+      if (threshPreview) threshPreview.textContent = e.target.value;
+    });
+  }
+
+  if (threshInput) {
+    threshInput.addEventListener("input", (e) => {
+      const v = e.target.value || "10";
+      if (threshSlider) threshSlider.value = v;
+      if (threshPreview) threshPreview.textContent = v;
+    });
+  }
+
+  const addNumBtn = el("wa-add-number-btn");
+  const newNumInput = el("wa-new-number-input");
+  const newKeyInput = el("wa-new-key-input");
+
+  async function doAddDispatcher() {
+    const rawInput = newNumInput ? newNumInput.value.trim() : "";
+    const apikey  = newKeyInput  ? newKeyInput.value.trim()  : "";
+    if (!rawInput) return;
+    if (!state.waSettings.dispatcher_numbers) state.waSettings.dispatcher_numbers = [];
+
+    // Detect Telegram Chat ID: pure digits, 6+ chars, no + prefix
+    const isTelegramId = /^\d{6,}$/.test(rawInput) && !rawInput.startsWith("+");
+
+    let newEntry;
+    if (isTelegramId && !apikey) {
+      // Store as Telegram recipient
+      newEntry = { type: "telegram", chat_id: rawInput, label: "Telegram Dispatcher" };
+    } else {
+      // Store as WhatsApp (CallMeBot) recipient
+      newEntry = { phone: rawInput, apikey: apikey || "" };
+    }
+
+    state.waSettings.dispatcher_numbers.push(newEntry);
+    if (newNumInput) newNumInput.value = "";
+    if (newKeyInput) newKeyInput.value = "";
     renderWaNumbers();
-  });
 
-  el("wa-new-number-input").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") el("wa-add-number-btn").click();
-  });
+    // Auto-save immediately so the entry persists after page reload
+    await silentSaveDispatchers();
 
-  el("wa-save-btn").addEventListener("click", saveWhatsAppSettings);
+    // Brief success toast
+    const feedback = el("wa-test-feedback");
+    if (feedback) {
+      const label = isTelegramId && !apikey
+        ? `✓ Telegram ID ${rawInput} added and saved!`
+        : `✓ ${rawInput} added and saved!`;
+      feedback.textContent = label;
+      feedback.className = "test-feedback ok";
+      feedback.hidden = false;
+      setTimeout(() => { feedback.hidden = true; }, 3000);
+    }
+  }
+
+  if (addNumBtn) {
+    addNumBtn.addEventListener("click", doAddDispatcher);
+  }
+
+  if (newNumInput) {
+    newNumInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        // If there's a key input and it's empty, move focus there (WhatsApp flow)
+        // But for Telegram IDs (pure digits), just add immediately
+        const rawVal = newNumInput.value.trim();
+        const looksLikeTelegram = /^\d{6,}$/.test(rawVal) && !rawVal.startsWith("+");
+        if (newKeyInput && !newKeyInput.value && !looksLikeTelegram) {
+          newKeyInput.focus();
+        } else {
+          doAddDispatcher();
+        }
+      }
+    });
+  }
+
+  if (newKeyInput) {
+    newKeyInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (addNumBtn) addNumBtn.click();
+      }
+    });
+  }
+
+  const saveWaBtn = el("wa-save-btn");
+  if (saveWaBtn) {
+    saveWaBtn.addEventListener("click", saveWhatsAppSettings);
+  }
+
+  const testWaBtn = el("wa-send-test-btn");
+  if (testWaBtn) {
+    testWaBtn.addEventListener("click", sendTestWhatsAppAlert);
+  }
 
   el("sync-btn").addEventListener("click", async () => {
     const btn = el("sync-btn");

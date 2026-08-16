@@ -406,3 +406,91 @@ def set_sync_state(conn, key, value):
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (key, str(value)),
     )
+
+
+# --------------------------------------------------------------------------
+# Application Settings & Configuration
+# --------------------------------------------------------------------------
+
+def get_setting(conn, key, default=None):
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(conn, key, value):
+    now = _now()
+    conn.execute(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        (key, str(value), now),
+    )
+
+
+def get_all_settings(conn):
+    rows = conn.execute("SELECT key, value, updated_at FROM settings").fetchall()
+    return {r["key"]: r["value"] for r in rows}
+
+
+# --------------------------------------------------------------------------
+# WhatsApp Pending Alert Queries
+# --------------------------------------------------------------------------
+
+def claim_pending_unalerted_requests(conn, threshold_minutes=10):
+    """
+    Atomically selects and immediately marks pending unalerted requests as claimed (whatsapp_alert_sent = 1).
+    This ensures that even if multiple processes (sync_worker, app.py background watcher, manual sync)
+    poll the database at the exact same moment, only ONE process can ever claim and send the alert.
+    """
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=threshold_minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    
+    rows = conn.execute(
+        """
+        SELECT id, client_name, client_email, client_phone, origin, destination, trip_date, created_at
+        FROM conversations
+        WHERE status = 'NEW_REQUEST'
+          AND created_at <= ?
+          AND (whatsapp_alert_sent IS NULL OR whatsapp_alert_sent = 0)
+        ORDER BY created_at ASC
+        """,
+        (cutoff,),
+    ).fetchall()
+    
+    if not rows:
+        return []
+    
+    ids = [r["id"] for r in rows]
+    placeholders = ",".join("?" for _ in ids)
+    conn.execute(
+        f"UPDATE conversations SET whatsapp_alert_sent = 1, updated_at = ? WHERE id IN ({placeholders})",
+        [_now()] + ids,
+    )
+    return rows
+
+
+def get_pending_unalerted_requests(conn, threshold_minutes=10):
+    """
+    Finds all conversations in status 'NEW_REQUEST' created more than threshold_minutes ago
+    which have not yet received a WhatsApp alert and have not had outbound replies.
+    """
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=threshold_minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    
+    return conn.execute(
+        """
+        SELECT id, client_name, client_email, client_phone, origin, destination, trip_date, created_at
+        FROM conversations
+        WHERE status = 'NEW_REQUEST'
+          AND created_at <= ?
+          AND (whatsapp_alert_sent IS NULL OR whatsapp_alert_sent = 0)
+        ORDER BY created_at ASC
+        """,
+        (cutoff,),
+    ).fetchall()
+
+
+def mark_conversation_alerted(conn, conversation_id):
+    conn.execute(
+        "UPDATE conversations SET whatsapp_alert_sent = 1, updated_at = ? WHERE id = ?",
+        (_now(), conversation_id),
+    )

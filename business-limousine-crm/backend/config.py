@@ -36,7 +36,22 @@ DEFAULTS = {
 
 class _Config:
     def _reload(self):
-        load_dotenv(BACKEND_DIR / ".env", override=True)
+        env_file = BACKEND_DIR / ".env"
+        if env_file.exists():
+            try:
+                with open(env_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+                        k, v = line.split("=", 1)
+                        os.environ[k.strip()] = v.strip().strip("'").strip('"')
+            except Exception:
+                pass
+        try:
+            load_dotenv(env_file, override=True)
+        except Exception:
+            pass
 
     def _get(self, name: str, default=None):
         self._reload()
@@ -117,6 +132,64 @@ class _Config:
     @property
     def FLASK_PORT(self):
         return int(self._get("FLASK_PORT", "5000"))
+
+    # Dispatch Alerts Configuration (Telegram & WhatsApp)
+    @property
+    def TELEGRAM_BOT_TOKEN(self):
+        return self._get("TELEGRAM_BOT_TOKEN")
+
+    @property
+    def TELEGRAM_CHAT_IDS(self):
+        return self._get("TELEGRAM_CHAT_IDS", "")
+
+    @property
+    def WHATSAPP_API_PROVIDER(self):
+        return self._get("WHATSAPP_API_PROVIDER", "telegram").strip().lower()
+
+    @property
+    def CALLMEBOT_API_KEY(self):
+        return self._get("CALLMEBOT_API_KEY")
+
+    @property
+    def CALLMEBOT_PHONE(self):
+        return self._get("CALLMEBOT_PHONE")
+
+    @property
+    def META_WA_PHONE_NUMBER_ID(self):
+        return self._get("META_WA_PHONE_NUMBER_ID") or self._get("WHATSAPP_PHONE_NUMBER_ID")
+
+    @property
+    def META_WA_ACCESS_TOKEN(self):
+        return self._get("META_WA_ACCESS_TOKEN") or self._get("WHATSAPP_ACCESS_TOKEN")
+
+    @property
+    def META_WA_BUSINESS_ACCOUNT_ID(self):
+        return self._get("META_WA_BUSINESS_ACCOUNT_ID")
+
+    @property
+    def TWILIO_ACCOUNT_SID(self):
+        return self._get("TWILIO_ACCOUNT_SID")
+
+    @property
+    def TWILIO_AUTH_TOKEN(self):
+        return self._get("TWILIO_AUTH_TOKEN")
+
+    @property
+    def TWILIO_WHATSAPP_FROM(self):
+        return self._get("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+
+    @property
+    def DISPATCHER_WHATSAPP_NUMBERS(self):
+        return self._get("DISPATCHER_WHATSAPP_NUMBERS", "")
+
+    @property
+    def WHATSAPP_ALERTS_ENABLED(self):
+        val = str(self._get("WHATSAPP_ALERTS_ENABLED", "true")).strip().lower()
+        return val in ("1", "true", "yes", "on")
+
+    @property
+    def WHATSAPP_ALERT_THRESHOLD_MINUTES(self):
+        return int(self._get("WHATSAPP_ALERT_THRESHOLD_MINUTES", "10"))
 
     def require_imap(self):
         if not self.IMAP_USER or not self.IMAP_PASSWORD:
