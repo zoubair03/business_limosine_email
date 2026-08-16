@@ -25,6 +25,15 @@
       <!-- populated by app.js -->
     </nav>
 
+    <nav class="settings-nav">
+      <button class="status-nav-item" id="whatsapp-settings-nav-btn" data-view="whatsapp-settings">
+        <span class="label">
+          <span class="dot dot-static"></span>
+          WhatsApp Alerts
+        </span>
+      </button>
+    </nav>
+
     <div class="sidebar-footer">
       <div class="user-profile-badge" id="user-profile-badge">
         <div class="user-avatar" id="user-avatar">A</div>
@@ -56,7 +65,59 @@
       </div>
     </header>
 
-    <div class="content">
+    <section class="settings-view" id="whatsapp-settings-view" hidden>
+      <p class="settings-lede">Prévenez l'équipe par WhatsApp lorsqu'une demande reste en attente trop longtemps sans réponse.</p>
+
+      <div class="settings-card">
+        <div class="settings-card-head">
+          <div>
+            <div class="settings-card-title">Activer les alertes</div>
+            <div class="settings-card-desc">Envoie un message WhatsApp aux dispatchers listés ci-dessous dès qu'une demande dépasse le délai fixé.</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="wa-toggle-enabled" checked>
+            <span class="switch-track"></span>
+          </label>
+        </div>
+
+        <div class="settings-divider"></div>
+
+        <label class="field-label" for="wa-threshold-input">Délai avant alerte</label>
+        <div class="threshold-row">
+          <input type="number" id="wa-threshold-input" value="10" min="1" max="120">
+          <span class="unit">minutes sans réponse</span>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <div class="settings-card-title" style="margin-bottom:4px;">Numéros dispatchers</div>
+        <div class="settings-card-desc" style="margin-bottom:18px;">Ces numéros doivent avoir rejoint le canal WhatsApp Business pour recevoir les alertes.</div>
+
+        <div class="number-list" id="wa-number-list"></div>
+
+        <div class="add-row">
+          <input type="text" id="wa-new-number-input" placeholder="+32 4XX XX XX XX">
+          <button class="btn-ghost" id="wa-add-number-btn" type="button">Ajouter</button>
+        </div>
+      </div>
+
+      <div class="settings-preview-card">
+        <div class="settings-preview-label">Aperçu du message</div>
+        <div class="settings-bubble">
+          ⏰ <b>Demande en attente</b><br>
+          Client : Adèle Agache<br>
+          Email : adele.agache@ef.com<br>
+          En attente depuis <span id="wa-preview-minutes">10</span> minutes sans réponse.
+        </div>
+      </div>
+
+      <div class="settings-footer-row">
+        <span class="settings-status-msg" id="wa-status-msg"><span class="settings-status-dot"></span>Réglages enregistrés</span>
+        <button class="btn-primary" id="wa-save-btn" type="button">Enregistrer</button>
+      </div>
+    </section>
+
+    <div class="content" id="conversations-content">
       <section class="list-panel" id="list-panel">
         <div id="conversation-list" class="conversation-list"></div>
         <div id="list-empty" class="list-empty" hidden>No conversations match this view.</div>
