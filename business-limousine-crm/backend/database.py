@@ -80,6 +80,35 @@ CREATE TABLE IF NOT EXISTS sync_state (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- Layer 1 of the pre-AI email filter: exact domain or email matches here
+-- are auto-classified as OTHER with zero Gemini calls. hit_count/last_hit_at
+-- let the UI show which rules are actually earning their keep.
+CREATE TABLE IF NOT EXISTS blocked_senders (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    pattern       TEXT UNIQUE NOT NULL COLLATE NOCASE,
+    pattern_type  TEXT NOT NULL DEFAULT 'domain' CHECK (pattern_type IN ('domain', 'email')),
+    reason        TEXT,
+    hit_count     INTEGER NOT NULL DEFAULT 0,
+    last_hit_at   TEXT,
+    created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_blocked_senders_pattern ON blocked_senders (pattern);
+
+-- Layer 3 of the pre-AI email filter: exact domain or email matches here
+-- always skip the blocklist/heuristics and go straight to Gemini, e.g.
+-- known corporate accounts (hotels, partner agencies) you never want
+-- misclassified as noise.
+CREATE TABLE IF NOT EXISTS allowed_senders (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    pattern       TEXT UNIQUE NOT NULL COLLATE NOCASE,
+    pattern_type  TEXT NOT NULL DEFAULT 'domain' CHECK (pattern_type IN ('domain', 'email')),
+    note          TEXT,
+    created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_allowed_senders_pattern ON allowed_senders (pattern);
 """
 
 
