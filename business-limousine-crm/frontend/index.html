@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Business Limousine — Dispatch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">BL</div>
+      <div class="brand-text">
+        <div class="brand-name">Business<br/>Limousine</div>
+        <div class="brand-sub">Dispatch Console</div>
+      </div>
+    </div>
+
+    <nav class="status-nav" id="status-nav">
+      <!-- populated by app.js -->
+    </nav>
+
+    <div class="sidebar-footer">
+      <button id="sync-btn" class="btn-sync">
+        <span class="sync-dot"></span>
+        <span id="sync-label">Sync inbox</span>
+      </button>
+      <div id="sync-meta" class="sync-meta">Not synced yet</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-title">
+        <span class="eyebrow">Manifest</span>
+        <h1 id="panel-title">All conversations</h1>
+      </div>
+      <div class="search-wrap">
+        <input id="search-input" type="text" placeholder="Search name, email, route…" autocomplete="off" />
+      </div>
+    </header>
+
+    <div class="content">
+      <section class="list-panel" id="list-panel">
+        <div id="conversation-list" class="conversation-list"></div>
+        <div id="list-empty" class="list-empty" hidden>No conversations match this view.</div>
+      </section>
+
+      <section class="detail-panel" id="detail-panel">
+        <div id="detail-empty" class="detail-empty">
+          <div class="detail-empty-mark">◎</div>
+          <p>Select a conversation from the manifest to view the full thread.</p>
+        </div>
+
+        <div id="detail-content" class="detail-content" hidden>
+
+          <div class="detail-header">
+            <button id="back-btn" class="back-btn" aria-label="Back to list">←</button>
+            <div class="detail-header-main">
+              <h2 id="client-name">—</h2>
+              <div class="client-meta">
+                <span id="client-email" class="mono"></span>
+                <span id="client-phone" class="mono"></span>
+              </div>
+            </div>
+            <select id="status-select" class="status-select"></select>
+          </div>
+
+          <div class="trip-card" id="trip-card">
+            <div class="trip-route">
+              <span id="trip-origin" class="mono">—</span>
+              <span class="trip-arrow">→</span>
+              <span id="trip-destination" class="mono">—</span>
+            </div>
+            <div class="trip-date mono" id="trip-date">Date not set</div>
+            <button id="edit-trip-btn" class="edit-trip-btn">Edit details</button>
+          </div>
+
+          <div class="trip-edit" id="trip-edit" hidden>
+            <input id="edit-client-name" type="text" placeholder="Client name" />
+            <input id="edit-client-phone" type="text" placeholder="Phone number" />
+            <input id="edit-trip-date" type="text" placeholder="Trip date / time" />
+            <input id="edit-origin" type="text" placeholder="Pickup (origin)" />
+            <input id="edit-destination" type="text" placeholder="Drop-off (destination)" />
+            <div class="trip-edit-actions">
+              <button id="save-trip-btn" class="btn-primary">Save details</button>
+              <button id="cancel-trip-btn" class="btn-ghost">Cancel</button>
+            </div>
+          </div>
+
+          <div class="detail-tabs">
+            <button class="tab-btn active" data-tab="thread">Thread</button>
+            <button class="tab-btn" data-tab="notes">Internal notes</button>
+          </div>
+
+          <div class="tab-panel" id="tab-thread">
+            <div id="thread" class="thread"></div>
+
+            <div class="reply-box">
+              <input id="reply-subject" type="text" placeholder="Subject" />
+              <textarea id="reply-body" rows="4" placeholder="Write a reply…"></textarea>
+              <div class="reply-actions">
+                <span id="reply-status" class="reply-status"></span>
+                <button id="reply-send-btn" class="btn-primary">Send reply</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-panel" id="tab-notes" hidden>
+            <div id="notes-list" class="notes-list"></div>
+            <div class="note-box">
+              <textarea id="note-input" rows="2" placeholder="Add an internal note (not visible to the client)…"></textarea>
+              <button id="note-add-btn" class="btn-primary">Add note</button>
+            </div>
+          </div>
+
+        </div>
+      </section>
+    </div>
+  </main>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
