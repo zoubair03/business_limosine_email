@@ -241,7 +241,7 @@ function switchView(view) {
     if (searchWrap) searchWrap.hidden = true;
     if (topbarActions) topbarActions.hidden = false;
     if (eyebrowEl) eyebrowEl.textContent = "AUTOMATION & ALERTS";
-    if (titleEl) titleEl.textContent = "WhatsApp Dispatch Alerts";
+    if (titleEl) titleEl.textContent = "Telegram & Dispatch Alerts";
 
     loadWhatsAppSettings();
   } else {

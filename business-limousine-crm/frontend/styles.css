@@ -372,6 +372,30 @@ button, input, textarea, select {
   box-shadow: 0 0 0 2px var(--brass-soft);
 }
 
+.btn-topbar-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-topbar-secondary:hover {
+  background: var(--paper);
+  border-color: var(--brass);
+  color: var(--brass-strong);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
 /* Notifications Button & Dropdown Box */
 .notif-wrapper {
   position: relative;
