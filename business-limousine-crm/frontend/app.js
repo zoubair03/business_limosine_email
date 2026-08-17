@@ -43,28 +43,49 @@ function escapeHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
+function safeDate(iso) {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+  } catch (e) {
+    return null;
+  }
+}
+
+function safeUtcString(iso) {
+  const d = safeDate(iso);
+  return d ? d.toUTCString() : (iso || "");
+}
+
 function formatRelative(iso) {
-  if (!iso) return "";
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "";
-  const diffMs = Date.now() - then;
-  const mins = Math.round(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  const d = safeDate(iso);
+  if (!d) return "";
+  try {
+    const diffMs = Date.now() - d.getTime();
+    const mins = Math.round(diffMs / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.round(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return d.toLocaleDateString();
+  } catch (e) {
+    return "";
+  }
 }
 
 function formatTimestamp(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString(undefined, {
-    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-  });
+  const d = safeDate(iso);
+  if (!d) return iso || "";
+  try {
+    return d.toLocaleString(undefined, {
+      month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    });
+  } catch (e) {
+    return iso || "";
+  }
 }
 
 async function api(path, options = {}) {
@@ -107,16 +128,24 @@ function hideAuthModal() {
 
 function renderUserProfile() {
   if (!state.user) {
-    el("user-profile-badge").style.display = "none";
+    if (el("user-profile-badge")) el("user-profile-badge").style.display = "none";
+    if (el("nav-users-settings")) el("nav-users-settings").style.display = "none";
     return;
   }
-  el("user-profile-badge").style.display = "flex";
-  el("user-name").textContent = state.user.full_name || state.user.email;
-  el("user-role-pill").textContent = state.user.role || "STAFF";
+  if (el("user-profile-badge")) el("user-profile-badge").style.display = "flex";
+  if (el("user-name")) el("user-name").textContent = state.user.full_name || state.user.email;
+  if (el("user-role-pill")) el("user-role-pill").textContent = state.user.role || "STAFF";
   const avatarEl = el("user-avatar");
-  avatarEl.textContent = (state.user.full_name || state.user.email || "U")[0].toUpperCase();
-  if (state.user.avatar_color) {
-    avatarEl.style.background = state.user.avatar_color;
+  if (avatarEl) {
+    avatarEl.textContent = (state.user.full_name || state.user.email || "U")[0].toUpperCase();
+    if (state.user.avatar_color) {
+      avatarEl.style.background = state.user.avatar_color;
+    }
+  }
+
+  const userNav = el("nav-users-settings");
+  if (userNav) {
+    userNav.style.display = state.user.role === "ADMIN" ? "flex" : "none";
   }
 }
 
@@ -226,17 +255,29 @@ function switchView(view) {
 
   const convContent = el("conversations-content");
   const waView = el("whatsapp-settings-view");
+  const emailView = el("email-settings-view");
+  const usersView = el("users-settings-view");
+
   const waNavBtn = el("nav-whatsapp-btn");
+  const emailNavBtn = el("nav-email-settings-btn");
+  const usersNavBtn = el("nav-users-settings");
+
   const searchWrap = el("topbar-search-wrap");
   const topbarActions = el("topbar-actions");
   const eyebrowEl = el("topbar-eyebrow");
   const titleEl = el("panel-title");
 
+  // Deactivate all sidebar items first
+  document.querySelectorAll("#status-nav .status-nav-item, .system-nav .status-nav-item").forEach((b) => {
+    b.classList.remove("active");
+  });
+
   if (view === "whatsapp-settings") {
     if (convContent) convContent.hidden = true;
+    if (emailView) emailView.hidden = true;
+    if (usersView) usersView.hidden = true;
     if (waView) waView.hidden = false;
     if (waNavBtn) waNavBtn.classList.add("active");
-    document.querySelectorAll("#status-nav .status-nav-item").forEach((b) => b.classList.remove("active"));
     
     if (searchWrap) searchWrap.hidden = true;
     if (topbarActions) topbarActions.hidden = false;
@@ -244,10 +285,37 @@ function switchView(view) {
     if (titleEl) titleEl.textContent = "Telegram & Dispatch Alerts";
 
     loadWhatsAppSettings();
+  } else if (view === "email-settings") {
+    if (convContent) convContent.hidden = true;
+    if (waView) waView.hidden = true;
+    if (usersView) usersView.hidden = true;
+    if (emailView) emailView.hidden = false;
+    if (emailNavBtn) emailNavBtn.classList.add("active");
+
+    if (searchWrap) searchWrap.hidden = true;
+    if (topbarActions) topbarActions.hidden = false;
+    if (eyebrowEl) eyebrowEl.textContent = "SETTINGS & IDENTITY";
+    if (titleEl) titleEl.textContent = "Email & Signature Settings";
+
+    loadEmailSettings();
+  } else if (view === "users-settings") {
+    if (convContent) convContent.hidden = true;
+    if (waView) waView.hidden = true;
+    if (emailView) emailView.hidden = true;
+    if (usersView) usersView.hidden = false;
+    if (usersNavBtn) usersNavBtn.classList.add("active");
+
+    if (searchWrap) searchWrap.hidden = true;
+    if (topbarActions) topbarActions.hidden = false;
+    if (eyebrowEl) eyebrowEl.textContent = "TEAM & ACCESS";
+    if (titleEl) titleEl.textContent = "Team & User Management";
+
+    loadUsers();
   } else {
     if (convContent) convContent.hidden = false;
     if (waView) waView.hidden = true;
-    if (waNavBtn) waNavBtn.classList.remove("active");
+    if (emailView) emailView.hidden = true;
+    if (usersView) usersView.hidden = true;
     
     const activeStatusBtn = document.querySelector(`#status-nav .status-nav-item[data-status="${state.status}"]`);
     if (activeStatusBtn) activeStatusBtn.classList.add("active");
@@ -258,6 +326,145 @@ function switchView(view) {
     
     const currStatus = STATUSES.find((s) => s.key === state.status);
     if (titleEl) titleEl.textContent = currStatus ? currStatus.label : "All conversations";
+  }
+}
+
+// -------------------------------------------------------------------------
+// Email & Signature Settings Operations
+// -------------------------------------------------------------------------
+
+const DEFAULT_OFFICIAL_HTML_SIG = `<div style="font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #333333; line-height: 1.5; margin-top: 20px;">
+  <div style="font-weight: bold; font-size: 15px; color: #1E293B;">Lasaad</div>
+  <div style="color: #2563EB; font-weight: 600; margin: 2px 0;">Phone: <a href="tel:+32487446773" style="color: #2563EB; text-decoration: none;">+32 487 44 67 73</a></div>
+  <div style="color: #B45309; font-size: 11.5px; font-weight: 500; margin: 4px 0 10px;">Kind regards | Met vriendelijke groet | Kind regards | مع أطيب التحيات | С уважением</div>
+  <div style="border-top: 1px solid #E2E8F0; padding-top: 8px;">
+    <div style="font-weight: 700; color: #0F172A; text-decoration: underline; font-size: 12.5px;">Business Limousine Services - Worldwide Travel Services</div>
+    <div style="color: #64748B; font-size: 11.5px; margin-top: 2px;">Groundtransportation | Private Aviation | Concierge | Bodyguard</div>
+  </div>
+</div>`;
+
+async function loadEmailSettings() {
+  try {
+    const data = await api("/api/settings/email");
+    state.emailSettings = data;
+
+    const nameInput = el("setting-dispatcher-name");
+    const phoneInput = el("setting-dispatcher-phone");
+    const ccInput = el("setting-default-cc");
+    const textInput = el("setting-signature-text");
+    const htmlInput = el("setting-signature-html");
+
+    if (nameInput) nameInput.value = data.dispatcher_name || "Lasaad";
+    if (phoneInput) phoneInput.value = data.dispatcher_phone || "+32 487 44 67 73";
+    if (ccInput) ccInput.value = data.default_cc_email || "info@business-limousine.be";
+    if (textInput) textInput.value = data.signature_text || OFFICIAL_SIGNATURE;
+    if (htmlInput) htmlInput.value = data.signature_html || DEFAULT_OFFICIAL_HTML_SIG;
+
+    updateSigLivePreview();
+    updateComposerSignatureRender();
+  } catch (err) {
+    console.error("Failed to load email settings:", err);
+  }
+}
+
+function updateComposerSignatureRender() {
+  const sigContainer = el("composer-signature-html-render");
+  if (!sigContainer) return;
+  const htmlSig = state.emailSettings?.signature_html || DEFAULT_OFFICIAL_HTML_SIG;
+  sigContainer.innerHTML = htmlSig;
+}
+
+function updateSigLivePreview() {
+  const previewArea = el("sig-preview-render-area");
+  if (!previewArea) return;
+
+  const isHtmlTab = el("sigtab-btn-html")?.classList.contains("active");
+  const htmlCode = el("setting-signature-html")?.value || "";
+  const textCode = el("setting-signature-text")?.value || "";
+
+  if (isHtmlTab && htmlCode.trim()) {
+    previewArea.innerHTML = htmlCode;
+  } else {
+    const cleanText = textCode.trim() || OFFICIAL_SIGNATURE;
+    previewArea.innerHTML = `<div class="sig-preview-text-rendered">${escapeHtml(cleanText)}</div>`;
+  }
+}
+
+async function saveEmailSettings() {
+  const saveBtn = el("btn-save-email-settings");
+  const feedbackEl = el("email-settings-feedback");
+  const btnText = el("save-email-settings-btn-text");
+
+  const name = el("setting-dispatcher-name")?.value.trim() || "Lasaad";
+  const phone = el("setting-dispatcher-phone")?.value.trim() || "+32 487 44 67 73";
+  const defaultCc = el("setting-default-cc")?.value.trim() || "info@business-limousine.be";
+  const sigText = el("setting-signature-text")?.value || "";
+  const sigHtml = el("setting-signature-html")?.value || "";
+
+  if (saveBtn) saveBtn.disabled = true;
+  if (btnText) btnText.textContent = "Saving…";
+
+  try {
+    const result = await api("/api/settings/email", {
+      method: "POST",
+      body: JSON.stringify({
+        dispatcher_name: name,
+        dispatcher_phone: phone,
+        default_cc_email: defaultCc,
+        signature_text: sigText,
+        signature_html: sigHtml,
+      }),
+    });
+
+    state.emailSettings = {
+      dispatcher_name: name,
+      dispatcher_phone: phone,
+      default_cc_email: defaultCc,
+      signature_text: sigText,
+      signature_html: sigHtml,
+    };
+
+    updateComposerSignatureRender();
+
+    if (feedbackEl) {
+      feedbackEl.textContent = "✓ Email & signature settings saved successfully!";
+      feedbackEl.className = "test-feedback ok";
+      feedbackEl.hidden = false;
+      setTimeout(() => { feedbackEl.hidden = true; }, 3500);
+    }
+  } catch (err) {
+    if (feedbackEl) {
+      feedbackEl.textContent = `Error: ${err.message}`;
+      feedbackEl.className = "test-feedback error";
+      feedbackEl.hidden = false;
+    }
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+    if (btnText) btnText.textContent = "💾 Save Email Settings";
+  }
+}
+
+function resetDefaultSignature() {
+  const textInput = el("setting-signature-text");
+  const htmlInput = el("setting-signature-html");
+  const nameInput = el("setting-dispatcher-name");
+  const phoneInput = el("setting-dispatcher-phone");
+  const ccInput = el("setting-default-cc");
+
+  if (nameInput) nameInput.value = "Lasaad";
+  if (phoneInput) phoneInput.value = "+32 487 44 67 73";
+  if (ccInput) ccInput.value = "info@business-limousine.be";
+  if (textInput) textInput.value = OFFICIAL_SIGNATURE;
+  if (htmlInput) htmlInput.value = DEFAULT_OFFICIAL_HTML_SIG;
+
+  updateSigLivePreview();
+
+  const feedbackEl = el("email-settings-feedback");
+  if (feedbackEl) {
+    feedbackEl.textContent = "↺ Reset to official Business Limousine template. Remember to click Save.";
+    feedbackEl.className = "test-feedback ok";
+    feedbackEl.hidden = false;
+    setTimeout(() => { feedbackEl.hidden = true; }, 3000);
   }
 }
 
@@ -553,6 +760,309 @@ async function sendTestWhatsAppAlert() {
 }
 
 // -------------------------------------------------------------------------
+// Team & User Management (Admin Only)
+// -------------------------------------------------------------------------
+
+let usersDataCache = [];
+
+async function loadUsers() {
+  if (!state.user || state.user.role !== "ADMIN") return;
+  try {
+    const data = await api("/api/users");
+    usersDataCache = data.users || [];
+    renderUsersTable();
+  } catch (err) {
+    console.error("Failed to load users:", err);
+  }
+}
+
+function renderUsersTable(filter = "") {
+  const tbody = el("users-table-body");
+  const countEl = el("users-total-count");
+  if (!tbody) return;
+
+  const query = (filter || "").toLowerCase().trim();
+  const filtered = usersDataCache.filter((u) => {
+    if (!query) return true;
+    return (
+      (u.full_name || "").toLowerCase().includes(query) ||
+      (u.email || "").toLowerCase().includes(query) ||
+      (u.role || "").toLowerCase().includes(query)
+    );
+  });
+
+  if (countEl) countEl.textContent = filtered.length;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 32px 16px;">
+          No team members found matching your search.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map((u) => {
+    const isYou = state.user && state.user.id === u.id;
+    const roleLower = (u.role || "dispatcher").toLowerCase();
+    const active = u.is_active !== undefined ? Boolean(u.is_active) : true;
+    const initials = (u.full_name || u.email || "U")
+      .split(" ")
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+
+    return `
+      <tr data-user-id="${u.id}">
+        <td>
+          <div class="user-cell-flex">
+            <div class="user-table-avatar" style="background: ${u.avatar_color || "#C5A059"};">
+              ${escapeHtml(initials)}
+            </div>
+            <div>
+              <span class="user-table-name">${escapeHtml(u.full_name)}</span>
+              ${isYou ? `<span class="user-table-you-pill">YOU</span>` : ""}
+            </div>
+          </div>
+        </td>
+        <td class="mono" style="color: var(--text-muted); font-size: 12px;">${escapeHtml(u.email)}</td>
+        <td>
+          <span class="user-role-badge ${roleLower}">${escapeHtml(u.role)}</span>
+        </td>
+        <td>
+          <span class="user-status-badge ${active ? "active" : "disabled"}">
+            ${active ? "Active" : "Disabled"}
+          </span>
+        </td>
+        <td style="color: var(--text-muted); font-size: 11.5px;">${formatRelative(u.created_at)}</td>
+        <td>
+          <div class="user-actions-cell">
+            <button type="button" class="btn-user-action btn-edit-user" data-user-id="${u.id}" title="Edit User">
+              ✏️ Edit
+            </button>
+            ${
+              !isYou
+                ? `
+              <button type="button" class="btn-user-action btn-toggle-user" data-user-id="${u.id}" data-active="${active}" title="${active ? "Disable Account" : "Enable Account"}">
+                ${active ? "⏸ Disable" : "▶ Enable"}
+              </button>
+              <button type="button" class="btn-user-action danger btn-delete-user" data-user-id="${u.id}" data-email="${escapeHtml(u.email)}" title="Delete User">
+                🗑
+              </button>
+            `
+                : ""
+            }
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  // Bind actions
+  tbody.querySelectorAll(".btn-edit-user").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const uid = Number(btn.dataset.userId);
+      const targetUser = usersDataCache.find((u) => u.id === uid);
+      if (targetUser) openEditUserModal(targetUser);
+    });
+  });
+
+  tbody.querySelectorAll(".btn-toggle-user").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const uid = Number(btn.dataset.userId);
+      const curActive = btn.dataset.active === "true";
+      handleToggleUserStatus(uid, curActive);
+    });
+  });
+
+  tbody.querySelectorAll(".btn-delete-user").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const uid = Number(btn.dataset.userId);
+      const email = btn.dataset.email;
+      handleDeleteUser(uid, email);
+    });
+  });
+}
+
+function openAddUserModal() {
+  const modal = el("user-modal");
+  const form = el("user-edit-form");
+  const title = el("user-modal-title");
+  const idInput = el("user-form-id");
+  const nameInput = el("user-form-fullname");
+  const emailInput = el("user-form-email");
+  const roleSelect = el("user-form-role");
+  const colorSelect = el("user-form-avatar-color");
+  const pwInput = el("user-form-password");
+  const pwLabel = el("user-form-password-label");
+  const pwHint = el("user-form-password-hint");
+  const feedback = el("user-modal-feedback");
+
+  if (!modal || !form) return;
+
+  if (form) form.reset();
+  if (idInput) idInput.value = "";
+  if (title) title.textContent = "Add New Team Member";
+  if (emailInput) emailInput.disabled = false;
+  if (pwInput) {
+    pwInput.required = true;
+    pwInput.placeholder = "Minimum 6 characters";
+  }
+  if (pwLabel) pwLabel.textContent = "Password *";
+  if (pwHint) pwHint.style.display = "none";
+  if (feedback) feedback.hidden = true;
+
+  modal.hidden = false;
+  if (nameInput) nameInput.focus();
+}
+
+function openEditUserModal(user) {
+  const modal = el("user-modal");
+  const title = el("user-modal-title");
+  const idInput = el("user-form-id");
+  const nameInput = el("user-form-fullname");
+  const emailInput = el("user-form-email");
+  const roleSelect = el("user-form-role");
+  const colorSelect = el("user-form-avatar-color");
+  const pwInput = el("user-form-password");
+  const pwLabel = el("user-form-password-label");
+  const pwHint = el("user-form-password-hint");
+  const feedback = el("user-modal-feedback");
+
+  if (!modal) return;
+
+  if (idInput) idInput.value = user.id;
+  if (title) title.textContent = `Edit User — ${user.full_name || user.email}`;
+  if (nameInput) nameInput.value = user.full_name || "";
+  if (emailInput) {
+    emailInput.value = user.email || "";
+    emailInput.disabled = true;
+  }
+  if (roleSelect) roleSelect.value = user.role || "DISPATCHER";
+  if (colorSelect) colorSelect.value = user.avatar_color || "#C5A059";
+  if (pwInput) {
+    pwInput.value = "";
+    pwInput.required = false;
+    pwInput.placeholder = "Leave blank to keep existing password";
+  }
+  if (pwLabel) pwLabel.textContent = "Reset Password (Optional)";
+  if (pwHint) pwHint.style.display = "block";
+  if (feedback) feedback.hidden = true;
+
+  modal.hidden = false;
+}
+
+function closeUserModal() {
+  const modal = el("user-modal");
+  if (modal) modal.hidden = true;
+}
+
+async function handleSaveUser(e) {
+  e.preventDefault();
+  const idInput = el("user-form-id");
+  const nameInput = el("user-form-fullname");
+  const emailInput = el("user-form-email");
+  const roleSelect = el("user-form-role");
+  const colorSelect = el("user-form-avatar-color");
+  const pwInput = el("user-form-password");
+  const saveBtn = el("user-modal-save-btn");
+  const feedback = el("user-modal-feedback");
+
+  const userId = idInput ? idInput.value : "";
+  const fullName = nameInput ? nameInput.value.trim() : "";
+  const email = emailInput ? emailInput.value.trim().toLowerCase() : "";
+  const role = roleSelect ? roleSelect.value : "DISPATCHER";
+  const avatarColor = colorSelect ? colorSelect.value : "#C5A059";
+  const password = pwInput ? pwInput.value : "";
+
+  if (!fullName || (!userId && !email)) {
+    if (feedback) {
+      feedback.textContent = "Please fill in all required fields.";
+      feedback.className = "test-feedback error";
+      feedback.hidden = false;
+    }
+    return;
+  }
+
+  if (saveBtn) saveBtn.disabled = true;
+
+  try {
+    if (userId) {
+      const payload = {
+        full_name: fullName,
+        role: role,
+        avatar_color: avatarColor,
+      };
+      if (password) payload.password = password;
+
+      await api(`/api/users/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+    } else {
+      if (!password || password.length < 4) {
+        throw new Error("Password must be at least 4 characters.");
+      }
+      await api("/api/users", {
+        method: "POST",
+        body: JSON.stringify({
+          full_name: fullName,
+          email: email,
+          password: password,
+          role: role,
+          avatar_color: avatarColor,
+        }),
+      });
+    }
+
+    closeUserModal();
+    await loadUsers();
+
+    if (state.user && state.user.id === Number(userId)) {
+      state.user.full_name = fullName;
+      state.user.avatar_color = avatarColor;
+      state.user.role = role;
+      renderUserProfile();
+    }
+  } catch (err) {
+    if (feedback) {
+      feedback.textContent = `Error: ${err.message}`;
+      feedback.className = "test-feedback error";
+      feedback.hidden = false;
+    }
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+async function handleToggleUserStatus(userId, currentActive) {
+  try {
+    await api(`/api/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_active: !currentActive }),
+    });
+    await loadUsers();
+  } catch (err) {
+    alert(`Could not update user status: ${err.message}`);
+  }
+}
+
+async function handleDeleteUser(userId, userEmail) {
+  if (!confirm(`Are you sure you want to permanently delete user "${userEmail}"?`)) {
+    return;
+  }
+  try {
+    await api(`/api/users/${userId}`, { method: "DELETE" });
+    await loadUsers();
+  } catch (err) {
+    alert(`Could not delete user: ${err.message}`);
+  }
+}
+
+// -------------------------------------------------------------------------
 // Conversation list
 // -------------------------------------------------------------------------
 
@@ -618,12 +1128,6 @@ function renderConversations() {
       </button>
     `;
   }).join("");
-
-  list.querySelectorAll(".conversation-row").forEach((row) => {
-    row.addEventListener("click", () => {
-      selectConversation(Number(row.dataset.id), true, true);
-    });
-  });
 }
 
 // -------------------------------------------------------------------------
@@ -821,93 +1325,246 @@ function toggleNotifications(forceState) {
 
 
 // -------------------------------------------------------------------------
+// Official Business Limousine Signature & Constants
+// -------------------------------------------------------------------------
+
+const OFFICIAL_SIGNATURE = `Lasaad
+Phone: +32 487 44 67 73
+Kind regards | Met vriendelijke groet | Kind regards | مع أطيب التحيات | С уважением
+
+Business Limousine Services - Worldwide Travel Services
+Groundtransportation | Private Aviation | Concierge | Bodyguard`;
+
+const DEFAULT_CC_EMAIL = "info@business-limousine.be";
+
+function getCombinedCc(existingCc) {
+  const defaultCc = state.emailSettings?.default_cc_email || DEFAULT_CC_EMAIL;
+  const addresses = new Set();
+  if (defaultCc) {
+    defaultCc.split(",").map((s) => s.trim()).filter(Boolean).forEach((addr) => addresses.add(addr));
+  }
+  if (existingCc) {
+    existingCc.split(",").map((s) => s.trim()).filter(Boolean).forEach((addr) => {
+      if (!addr.includes("noreply")) {
+        addresses.add(addr);
+      }
+    });
+  }
+  return Array.from(addresses).join(", ");
+}
+
+function getActiveSignatureText() {
+  return state.emailSettings?.signature_text || OFFICIAL_SIGNATURE;
+}
+
+function ensureDefaultSignature(text) {
+  const activeSig = getActiveSignatureText();
+  if (!text || text.trim() === "") {
+    return `\n\n${activeSig}`;
+  }
+  if (text.includes("Business Limousine Services") || text.includes("+32 487 44 67 73")) {
+    return text;
+  }
+  return `${text.trim()}\n\n${activeSig}`;
+}
+
+// -------------------------------------------------------------------------
 // Conversation detail
 // -------------------------------------------------------------------------
 
 async function selectConversation(id, reloadDetail = true, switchTab = false) {
+  if (!id) return;
   state.selectedId = id;
   if (switchTab) {
-    setTab("thread"); // Only switch to Thread tab when selecting a conversation from the manifest
+    setTab("thread");
   }
   document.querySelectorAll(".conversation-row").forEach((row) => {
     row.classList.toggle("selected", Number(row.dataset.id) === id);
   });
 
-  if (reloadDetail) {
-    try {
+  try {
+    if (reloadDetail || !state.selectedDetail || state.selectedDetail.conversation?.id !== id) {
       state.selectedDetail = await api(`/api/conversations/${id}`);
-    } catch (err) {
-      console.error(err);
+    }
+
+    if (!state.selectedDetail || !state.selectedDetail.conversation) {
       return;
     }
-  }
 
-  const { conversation, messages, notes } = state.selectedDetail;
+    const { conversation, messages = [], notes = [] } = state.selectedDetail;
 
-  el("detail-empty").hidden = true;
-  el("detail-content").hidden = false;
-  document.body.classList.add("mobile-detail-open");
+    if (el("detail-empty")) el("detail-empty").hidden = true;
+    if (el("detail-content")) el("detail-content").hidden = false;
+    document.body.classList.add("mobile-detail-open");
 
-  el("client-name").textContent = conversation.client_name || conversation.client_email.split("@")[0];
-  el("client-email").textContent = conversation.client_email || "";
-  el("client-phone").textContent = conversation.client_phone || "";
+    if (el("client-name")) el("client-name").textContent = conversation.client_name || conversation.client_email?.split("@")[0] || "Valued Client";
+    if (el("client-email")) el("client-email").textContent = conversation.client_email || "";
+    if (el("client-phone")) el("client-phone").textContent = conversation.client_phone || "";
 
-  renderStatusSelect(conversation.status);
+    renderStatusSelect(conversation.status);
 
-  el("trip-origin").textContent = conversation.origin || "Pickup not set";
-  el("trip-destination").textContent = conversation.destination || "Drop-off not set";
-  el("trip-date").textContent = conversation.trip_date || "Date not set";
-  el("trip-edit").hidden = true;
+    if (el("trip-origin")) el("trip-origin").textContent = conversation.origin || "Pickup not set";
+    if (el("trip-destination")) el("trip-destination").textContent = conversation.destination || "Drop-off not set";
+    if (el("trip-date")) el("trip-date").textContent = conversation.trip_date || "Date not set";
+    if (el("trip-edit")) el("trip-edit").hidden = true;
 
-  el("edit-client-name").value = conversation.client_name || "";
-  el("edit-client-phone").value = conversation.client_phone || "";
-  el("edit-trip-date").value = conversation.trip_date || "";
-  el("edit-origin").value = conversation.origin || "";
-  el("edit-destination").value = conversation.destination || "";
+    if (el("edit-client-name")) el("edit-client-name").value = conversation.client_name || "";
+    if (el("edit-client-phone")) el("edit-client-phone").value = conversation.client_phone || "";
+    if (el("edit-trip-date")) el("edit-trip-date").value = conversation.trip_date || "";
+    if (el("edit-origin")) el("edit-origin").value = conversation.origin || "";
+    if (el("edit-destination")) el("edit-destination").value = conversation.destination || "";
 
-  // Check for unread notes to show glowing indicator circle
-  const unreadNotesExist = hasUnreadNotes(id, notes);
-  const dotEl = el("notes-unread-dot");
-  if (dotEl) {
-    if (unreadNotesExist && state.tab !== "notes") {
-      dotEl.hidden = false;
-    } else {
-      dotEl.hidden = true;
+    // Check for unread notes to show glowing indicator circle
+    const unreadNotesExist = hasUnreadNotes(id, notes);
+    const dotEl = el("notes-unread-dot");
+    if (dotEl) {
+      if (unreadNotesExist && state.tab !== "notes") {
+        dotEl.hidden = false;
+      } else {
+        dotEl.hidden = true;
+      }
     }
+
+    if (state.tab === "notes") {
+      setConversationNotesRead(id);
+      if (dotEl) dotEl.hidden = true;
+    }
+
+    // Pre-populate email composer with default CC and dynamic signature
+    const toInput = el("reply-to");
+    if (toInput) toInput.value = conversation.client_email || "";
+
+    const ccInput = el("reply-cc");
+    const lastInboundMsg = [...messages].reverse().find((m) => m.direction === "inbound");
+    if (ccInput) ccInput.value = getCombinedCc(lastInboundMsg?.cc_addr);
+
+    const ccRow = el("cc-field-row");
+    if (ccRow) ccRow.hidden = false;
+
+    state.composerAttachments = [];
+    renderComposerAttachments();
+
+    const toolbarHeading = el("thread-subject-heading");
+    const countPill = el("thread-msg-count-pill");
+    const subj = lastInboundMsg?.subject || messages[0]?.subject || "Your inquiry";
+    if (toolbarHeading) toolbarHeading.textContent = subj;
+    if (countPill) countPill.textContent = `${messages.length} email${messages.length === 1 ? "" : "s"}`;
+
+    const subjInput = el("reply-subject");
+    if (subjInput) subjInput.value = subj.startsWith("Re:") ? subj : `Re: ${subj}`;
+
+    const replyBody = el("reply-body");
+    if (replyBody) {
+      replyBody.value = "";
+    }
+    updateComposerSignatureRender();
+    if (el("reply-status")) el("reply-status").textContent = "";
+
+    state.aiDrafts = null;
+    const aiDrawer = el("ai-draft-drawer");
+    if (aiDrawer) aiDrawer.hidden = true;
+    const aiBtn = el("btn-toggle-ai-draft");
+    if (aiBtn) aiBtn.classList.remove("active");
+
+    renderThread(messages, conversation);
+    renderNotes(notes);
+  } catch (err) {
+    console.error("Error displaying conversation:", err);
+  }
+}
+
+// -------------------------------------------------------------------------
+// AI Smart Draft Assistant (Gemini)
+// -------------------------------------------------------------------------
+
+let currentAiTone = "quote";
+
+async function fetchAiSmartDraft(tone = "quote", customPrompt = null) {
+  const id = state.selectedId;
+  if (!id) return;
+
+  const subjectEl = el("ai-draft-subject-line");
+  const bodyEl = el("ai-draft-body-preview");
+  const langPill = el("ai-lang-pill");
+  const genBtnText = el("ai-generate-btn-text");
+
+  currentAiTone = tone;
+  document.querySelectorAll(".ai-tone-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.tone === tone);
+  });
+
+  if (bodyEl) {
+    bodyEl.innerHTML = `<span style="color:var(--brass); font-style:italic;">✨ Gemini AI is analyzing the trip and composing luxury response drafts…</span>`;
+  }
+  if (genBtnText) genBtnText.textContent = "Thinking…";
+
+  try {
+    const payload = { tone, instructions: customPrompt };
+    const res = await api(`/api/conversations/${id}/ai-draft`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    state.aiDrafts = res;
+    if (langPill && res.language) {
+      langPill.textContent = `${res.language} detected`;
+    }
+
+    displaySelectedAiDraft(tone);
+  } catch (err) {
+    if (bodyEl) {
+      bodyEl.innerHTML = `<span style="color:#EF4444;">Failed to generate AI draft: ${escapeHtml(err.message)}</span>`;
+    }
+  } finally {
+    if (genBtnText) genBtnText.textContent = "Generate";
+  }
+}
+
+function displaySelectedAiDraft(tone = "quote") {
+  currentAiTone = tone;
+  document.querySelectorAll(".ai-tone-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.tone === tone);
+  });
+
+  const subjectEl = el("ai-draft-subject-line");
+  const bodyEl = el("ai-draft-body-preview");
+  if (!state.aiDrafts || !state.aiDrafts.drafts) return;
+
+  const draft = state.aiDrafts.drafts.find((d) => d.id === tone) || state.aiDrafts.drafts[0];
+  if (draft) {
+    if (subjectEl) subjectEl.textContent = `Subject: ${draft.subject || "Re: Executive Chauffeur Service"}`;
+    if (bodyEl) bodyEl.textContent = draft.body || "";
+  }
+}
+
+function applyCurrentAiDraftToComposer() {
+  if (!state.aiDrafts || !state.aiDrafts.drafts) return;
+  const draft = state.aiDrafts.drafts.find((d) => d.id === currentAiTone) || state.aiDrafts.drafts[0];
+  if (!draft) return;
+
+  const replyBody = el("reply-body");
+  const replySubj = el("reply-subject");
+
+  if (replyBody) {
+    replyBody.value = draft.body;
+    replyBody.focus();
+  }
+  if (replySubj && draft.subject) {
+    replySubj.value = draft.subject;
   }
 
-  if (state.tab === "notes") {
-    setConversationNotesRead(id);
-    if (dotEl) dotEl.hidden = true;
+  // Close AI drawer
+  const drawer = el("ai-draft-drawer");
+  const btnToggle = el("btn-toggle-ai-draft");
+  if (drawer) drawer.hidden = true;
+  if (btnToggle) btnToggle.classList.remove("active");
+
+  const statusEl = el("reply-status");
+  if (statusEl) {
+    statusEl.textContent = "✓ AI draft applied to message.";
+    statusEl.className = "reply-status ok";
+    setTimeout(() => { if (statusEl.textContent.includes("AI draft")) statusEl.textContent = ""; }, 3500);
   }
-
-  // Pre-populate email composer
-  const toInput = el("reply-to");
-  if (toInput) toInput.value = conversation.client_email || "";
-
-  const ccInput = el("reply-cc");
-  if (ccInput) ccInput.value = "";
-  const ccRow = el("cc-field-row");
-  if (ccRow) ccRow.hidden = true;
-
-  state.composerAttachments = [];
-  renderComposerAttachments();
-
-  const toolbarHeading = el("thread-subject-heading");
-  const countPill = el("thread-msg-count-pill");
-  const lastInbound = [...messages].reverse().find((m) => m.direction === "inbound");
-  const subj = lastInbound?.subject || messages[0]?.subject || "Your inquiry";
-  if (toolbarHeading) toolbarHeading.textContent = subj;
-  if (countPill) countPill.textContent = `${messages.length} email${messages.length === 1 ? "" : "s"}`;
-
-  const subjInput = el("reply-subject");
-  if (subjInput) subjInput.value = subj.startsWith("Re:") ? subj : `Re: ${subj}`;
-
-  el("reply-body").value = "";
-  el("reply-status").textContent = "";
-
-  renderThread(messages, conversation);
-  renderNotes(notes);
 }
 
 function formatFileSize(bytes) {
@@ -1000,61 +1657,54 @@ function applyQuickTemplate(templateKey) {
   if (!templateKey) return;
   const convo = state.selectedDetail?.conversation || {};
   const clientName = convo.client_name || convo.client_email?.split("@")[0] || "Valued Client";
-  const origin = convo.origin || "Brussels Airport";
-  const dest = convo.destination || "City Center";
-  const date = convo.trip_date || "as requested";
+  const origin = convo.origin || "Bruxelles (Aéroport / Ville)";
+  const dest = convo.destination || "Destination";
+  const date = convo.trip_date || "Date à convenir";
 
   const templates = {
-    quote_confirmation: `Dear ${clientName},
+    quote_confirmation: `Bonjour ${clientName},
 
-Thank you for contacting Business Limousine. We are pleased to confirm our VIP chauffeur quotation:
+Nous avons le plaisir de vous proposer un véhicule VIP Mercedes pour votre trajet :
 
-• Itinerary: ${origin} ➔ ${dest}
-• Date & Time: ${date}
-• Fleet: Mercedes-Benz VIP Executive (S-Class / V-Class)
-• Included Services: Flight tracking, Meet & Greet at arrival hall with name sign, 60 min complimentary wait time, mineral water & Wi-Fi onboard.
+• Date : ${date}
+• Départ : ${origin}
+• Destination : ${dest}
+• Nombre de passagers : A préciser
+• Véhicule : Mercedes-Benz Sprinter / Classe S VIP / Classe V
+• Tarif : [Tarif à compléter] € HTVA 6%
 
-Please let us know if you wish to confirm this booking or have any special requests.
+Ce tarif est proposé pour le transport selon les informations communiquées.
 
-Best regards,
-Dispatch Operations | Business Limousine`,
+Nous restons à votre entière disposition pour convenir ensemble des éventuels détails complémentaires.`,
 
-    chauffeur_assigned: `Dear ${clientName},
+    chauffeur_assigned: `Bonjour ${clientName},
 
-Your executive chauffeur has been officially assigned for your transfer on ${date}:
+Votre chauffeur VIP privé a été officiellement assigné pour votre trajet du ${date} :
 
-• Chauffeur: Executive Chauffeur
-• Assigned Vehicle: Mercedes-Benz VIP
-• Meeting Location: ${origin} (Chauffeur will meet you with a personalized tablet sign)
-• Drop-off: ${dest}
+• Chauffeur : Chauffeur VIP Business Limousine
+• Véhicule : Mercedes-Benz VIP
+• Lieu de prise en charge : ${origin} (Accueil personnalisé avec pancarte à votre nom)
+• Destination : ${dest}
 
-Our operations team is monitoring your flight schedule in real-time. We remain at your full disposal 24/7.
+Notre service dispatching suit votre trajet et l'état de votre vol en temps réel.`,
 
-Warm regards,
-Business Limousine Dispatch`,
+    flight_delay: `Bonjour ${clientName},
 
-    flight_delay: `Dear ${clientName},
+Nous suivons activement l'évolution de votre vol en temps réel.
+Soyez assuré(e) que votre chauffeur adapte son heure d'arrivée à ${origin} en fonction de l'horaire réel d'atterrissage.
 
-We are actively monitoring your flight status. Please rest assured that your chauffeur will adjust pickup timing based on your updated arrival at ${origin}.
+Aucun supplément d'attente ne sera facturé pour les retards de vol.`,
 
-No extra waiting charges will apply for flight delays. Have a safe and pleasant journey.
+    booking_confirmed: `Bonjour ${clientName},
 
-Best regards,
-Business Limousine Team`,
+Nous vous confirmons avec plaisir que votre réservation auprès de Business Limousine est validée :
 
-    booking_confirmed: `Dear ${clientName},
+• Client : ${clientName}
+• Prise en charge : ${origin}
+• Destination : ${dest}
+• Date & Heure : ${date}
 
-We are pleased to confirm that your reservation with Business Limousine is secured:
-
-• Client: ${clientName}
-• Pickup: ${origin}
-• Drop-off: ${dest}
-• Schedule: ${date}
-
-Thank you for choosing Business Limousine. We look forward to welcoming you.
-
-Sincerely,
-Business Limousine Management`,
+Nous vous remercions de votre confiance et restons à votre entière disposition 24/7.`,
   };
 
   const bodyEl = el("reply-body");
@@ -1100,6 +1750,47 @@ function renderStatusSelect(currentStatus) {
   `).join("");
 }
 
+function sanitizeEmailHtml(html) {
+  if (!html) return "";
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<meta\s+http-equiv=["']?refresh["']?[^>]*>/gi, "")
+    .replace(/<base[^>]*>/gi, "");
+}
+
+function buildSafeEmailIframeHtml(bodyHtml, msgId) {
+  const safeContent = sanitizeEmailHtml(bodyHtml);
+  const srcDoc = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <base target="_blank">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 2px 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 13.5px;
+      line-height: 1.55;
+      color: #1B2027;
+      background: transparent;
+      word-break: break-word;
+    }
+    img { max-width: 100% !important; height: auto !important; }
+    table { max-width: 100% !important; }
+    a { color: #2563EB; }
+  </style>
+</head>
+<body>${safeContent}</body>
+</html>`;
+
+  return `
+    <div class="email-body-html-frame-wrap">
+      <iframe class="email-body-iframe" data-msg-id="${msgId}" srcdoc="${escapeHtml(srcDoc)}" sandbox="allow-same-origin allow-popups" frameborder="0" scrolling="no"></iframe>
+    </div>
+  `;
+}
+
 function renderThread(messages, convo) {
   const threadEl = el("thread");
   const toolbarHeading = el("thread-subject-heading");
@@ -1112,8 +1803,8 @@ function renderThread(messages, convo) {
   }
 
   const sortedMessages = [...messages].sort((a, b) => {
-    const timeA = new Date(a.received_at || a.created_at || 0).getTime();
-    const timeB = new Date(b.received_at || b.created_at || 0).getTime();
+    const timeA = safeDate(a.received_at || a.created_at)?.getTime() || 0;
+    const timeB = safeDate(b.received_at || b.created_at)?.getTime() || 0;
     return timeA - timeB;
   });
 
@@ -1196,6 +1887,10 @@ function renderThread(messages, convo) {
       ? `<span class="cc-badge-chip">CC: ${escapeHtml(m.cc_addr)}</span>` 
       : "";
 
+    const renderedBodyHtml = m.body_html
+      ? buildSafeEmailIframeHtml(m.body_html, m.id)
+      : `<div class="email-body-text">${escapeHtml(bodyText)}</div>`;
+
     return `
       <div class="email-card ${m.direction} ${isExpanded ? "" : "collapsed"}" data-msg-id="${m.id}">
         <div class="email-card-head">
@@ -1240,7 +1935,7 @@ function renderThread(messages, convo) {
           ` : ""}
           <div class="meta-detail-row">
             <span class="meta-detail-label">Date:</span>
-            <span class="meta-detail-value">${new Date(m.received_at || m.created_at).toUTCString()}</span>
+            <span class="meta-detail-value">${safeUtcString(m.received_at || m.created_at)}</span>
           </div>
           ${m.subject ? `
             <div class="meta-detail-row">
@@ -1252,7 +1947,7 @@ function renderThread(messages, convo) {
 
         <div class="email-card-body">
           ${m.subject && isExpanded ? `<div class="email-subject-line">${escapeHtml(m.subject)}</div>` : ""}
-          ${m.body_html ? `<div class="email-body-html">${m.body_html}</div>` : `<div class="email-body-text">${escapeHtml(bodyText)}</div>`}
+          ${renderedBodyHtml}
           ${quotedText ? `
             <details class="message-quote">
               <summary>Quoted email history</summary>
@@ -1263,20 +1958,37 @@ function renderThread(messages, convo) {
         </div>
 
         <div class="email-card-footer">
-          <button type="button" class="card-action-btn card-reply-btn" data-from="${escapeHtml(m.from_addr || convo?.client_email || '')}" data-subj="${escapeHtml(m.subject || '')}">
+          <button type="button" class="card-action-btn card-reply-all-btn" data-from="${escapeHtml(m.from_addr || convo?.client_email || '')}" data-cc="${escapeHtml(m.cc_addr || '')}" data-subj="${escapeHtml(m.subject || '')}" title="Reply All (Outlook-style)">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 17 2 12 7 7"></polyline><polyline points="12 17 7 12 12 7"></polyline><path d="M22 18v-2a4 4 0 0 0-4-4H7"></path></svg>
+            <span>Reply All</span>
+          </button>
+          <button type="button" class="card-action-btn card-reply-btn" data-from="${escapeHtml(m.from_addr || convo?.client_email || '')}" data-subj="${escapeHtml(m.subject || '')}" title="Direct Reply">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
             <span>Reply</span>
           </button>
-          ${m.cc_addr ? `
-            <button type="button" class="card-action-btn card-reply-all-btn" data-from="${escapeHtml(m.from_addr || convo?.client_email || '')}" data-cc="${escapeHtml(m.cc_addr)}" data-subj="${escapeHtml(m.subject || '')}">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 17 2 12 7 7"></polyline><polyline points="12 17 7 12 12 7"></polyline><path d="M22 18v-2a4 4 0 0 0-4-4H7"></path></svg>
-              <span>Reply All</span>
-            </button>
-          ` : ""}
         </div>
       </div>
     `;
   }).join("");
+
+  // Auto-resize iframes to fit email height perfectly
+  threadEl.querySelectorAll(".email-body-iframe").forEach((iframe) => {
+    function adjustIframeHeight() {
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (doc && doc.body) {
+          const scrollH = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, 30);
+          iframe.style.height = `${scrollH + 20}px`;
+        }
+      } catch (e) {}
+    }
+    iframe.addEventListener("load", () => {
+      adjustIframeHeight();
+      setTimeout(adjustIframeHeight, 150);
+      setTimeout(adjustIframeHeight, 500);
+    });
+    setTimeout(adjustIframeHeight, 100);
+  });
 
   // Attach card collapse/expand toggles
   threadEl.querySelectorAll(".email-card-head").forEach((head) => {
@@ -1299,31 +2011,25 @@ function renderThread(messages, convo) {
   });
 
   // Attach Reply / Reply All buttons inside cards
-  threadEl.querySelectorAll(".card-reply-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const fromAddr = btn.dataset.from;
-      const subj = btn.dataset.subj;
-      if (fromAddr) el("reply-to").value = fromAddr;
-      if (subj) el("reply-subject").value = subj.startsWith("Re:") ? subj : `Re: ${subj}`;
-      el("reply-body").focus();
-      el("email-composer").scrollIntoView({ behavior: "smooth" });
-    });
-  });
-
-  threadEl.querySelectorAll(".card-reply-all-btn").forEach((btn) => {
+  threadEl.querySelectorAll(".card-reply-all-btn, .card-reply-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const fromAddr = btn.dataset.from;
       const ccAddr = btn.dataset.cc;
       const subj = btn.dataset.subj;
       if (fromAddr) el("reply-to").value = fromAddr;
-      if (ccAddr) {
-        el("reply-cc").value = ccAddr;
-        el("cc-field-row").hidden = false;
-      }
+      el("reply-cc").value = getCombinedCc(ccAddr);
+      el("cc-field-row").hidden = false;
       if (subj) el("reply-subject").value = subj.startsWith("Re:") ? subj : `Re: ${subj}`;
-      el("reply-body").focus();
+
+      const replyBody = el("reply-body");
+      if (replyBody) {
+        if (!replyBody.value.trim() || replyBody.value.trim() === OFFICIAL_SIGNATURE) {
+          replyBody.value = `\n\n${OFFICIAL_SIGNATURE}`;
+        }
+        replyBody.focus();
+        replyBody.setSelectionRange(0, 0);
+      }
       el("email-composer").scrollIntoView({ behavior: "smooth" });
     });
   });
@@ -1432,42 +2138,54 @@ function wireEvents() {
   }
 
   // Login form
-  el("login-form").addEventListener("submit", async (e) => {
+  el("login-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const email = el("login-email").value.trim();
     const password = el("login-password").value;
     await handleLogin(email, password);
   });
 
-  // Staff credential autofill shortcuts
-  el("demo-admin-btn")?.addEventListener("click", () => {
-    el("login-email").value = "admin@businesslimousine.com";
-    el("login-password").value = "admin123";
-    handleLogin("admin@businesslimousine.com", "admin123");
-  });
+  // Password visibility toggles
+  const loginPwToggle = el("login-pw-toggle");
+  const loginPwInput = el("login-password");
+  if (loginPwToggle && loginPwInput) {
+    loginPwToggle.addEventListener("click", () => {
+      const isPw = loginPwInput.type === "password";
+      loginPwInput.type = isPw ? "text" : "password";
+      loginPwToggle.textContent = isPw ? "🔒" : "👁";
+    });
+  }
 
-  el("demo-iheb-btn")?.addEventListener("click", () => {
-    el("login-email").value = "iheb@businesslimousine.com";
-    el("login-password").value = "dispatch123";
-    handleLogin("iheb@businesslimousine.com", "dispatch123");
-  });
-
-  el("demo-zoubair-btn")?.addEventListener("click", () => {
-    el("login-email").value = "zoubair@businesslimousine.com";
-    el("login-password").value = "dispatch123";
-    handleLogin("zoubair@businesslimousine.com", "dispatch123");
-  });
+  const userPwToggle = el("user-form-pw-toggle");
+  const userPwInput = el("user-form-password");
+  if (userPwToggle && userPwInput) {
+    userPwToggle.addEventListener("click", () => {
+      const isPw = userPwInput.type === "password";
+      userPwInput.type = isPw ? "text" : "password";
+      userPwToggle.textContent = isPw ? "🔒" : "👁";
+    });
+  }
 
   // Logout button
   el("logout-btn")?.addEventListener("click", handleLogout);
 
   let searchTimer = null;
-  el("search-input").addEventListener("input", (e) => {
+  el("search-input")?.addEventListener("input", (e) => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       state.search = e.target.value.trim();
       loadConversations();
     }, 250);
+  });
+
+  // Delegated click handler on conversation manifest
+  el("conversation-list")?.addEventListener("click", (e) => {
+    const row = e.target.closest(".conversation-row");
+    if (!row) return;
+    const id = Number(row.dataset.id);
+    if (id) {
+      selectConversation(id, true, true);
+    }
   });
 
   el("back-btn").addEventListener("click", () => {
@@ -1518,12 +2236,12 @@ function wireEvents() {
     const toAddr = el("reply-to")?.value.trim() || "";
     const ccAddr = el("reply-cc")?.value.trim() || "";
     const subject = el("reply-subject")?.value.trim() || "";
-    const body = el("reply-body")?.value.trim() || "";
+    const userMessage = el("reply-body")?.value.trim() || "";
     const attachments = state.composerAttachments || [];
     const statusEl = el("reply-status");
     const sendBtn = el("reply-send-btn");
 
-    if (!body && attachments.length === 0) {
+    if (!userMessage && attachments.length === 0) {
       if (statusEl) {
         statusEl.textContent = "Write a message or attach a file before sending.";
         statusEl.className = "reply-status error";
@@ -1544,13 +2262,13 @@ function wireEvents() {
           to_addr: toAddr,
           cc_addr: ccAddr,
           subject: subject,
-          body_text: body,
+          body_text: userMessage,
           attachments: attachments,
         }),
       });
 
       if (statusEl) {
-        statusEl.textContent = "✓ Sent successfully.";
+        statusEl.textContent = "✓ Sent successfully with rich HTML signature.";
         statusEl.className = "reply-status ok";
       }
 
@@ -1568,6 +2286,15 @@ function wireEvents() {
     } finally {
       if (sendBtn) sendBtn.disabled = false;
     }
+  }
+
+  // Edit Signature shortcut button inside composer
+  const editSigBtn = el("composer-edit-signature-btn");
+  if (editSigBtn) {
+    editSigBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      switchView("email-settings");
+    });
   }
 
   // CC Toggle Button
@@ -1710,6 +2437,65 @@ function wireEvents() {
   const replySendBtn = el("reply-send-btn");
   if (replySendBtn) {
     replySendBtn.addEventListener("click", handleSendEmailReply);
+  }
+
+  // AI Smart Draft Assistant
+  const btnToggleAi = el("btn-toggle-ai-draft");
+  const aiDrawer = el("ai-draft-drawer");
+  const aiCloseBtn = el("ai-drawer-close-btn");
+
+  if (btnToggleAi && aiDrawer) {
+    btnToggleAi.addEventListener("click", () => {
+      aiDrawer.hidden = !aiDrawer.hidden;
+      btnToggleAi.classList.toggle("active", !aiDrawer.hidden);
+      if (!aiDrawer.hidden && !state.aiDrafts) {
+        fetchAiSmartDraft(currentAiTone);
+      }
+    });
+  }
+
+  if (aiCloseBtn && aiDrawer && btnToggleAi) {
+    aiCloseBtn.addEventListener("click", () => {
+      aiDrawer.hidden = true;
+      btnToggleAi.classList.remove("active");
+    });
+  }
+
+  document.querySelectorAll(".ai-tone-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tone = btn.dataset.tone;
+      if (state.aiDrafts && state.aiDrafts.drafts) {
+        displaySelectedAiDraft(tone);
+      } else {
+        fetchAiSmartDraft(tone);
+      }
+    });
+  });
+
+  const btnAiGenerate = el("btn-ai-generate-action");
+  const aiCustomInput = el("ai-custom-instructions");
+
+  function triggerCustomAiDraft() {
+    const promptVal = aiCustomInput?.value.trim() || null;
+    fetchAiSmartDraft(currentAiTone, promptVal);
+  }
+
+  if (btnAiGenerate) {
+    btnAiGenerate.addEventListener("click", triggerCustomAiDraft);
+  }
+
+  if (aiCustomInput) {
+    aiCustomInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        triggerCustomAiDraft();
+      }
+    });
+  }
+
+  const btnAiApply = el("btn-ai-apply");
+  if (btnAiApply) {
+    btnAiApply.addEventListener("click", applyCurrentAiDraftToComposer);
   }
 
   // Lightbox Modal Controls
@@ -1870,6 +2656,92 @@ function wireEvents() {
     });
   }
 
+  // Email & Signature Settings Navigation
+  const navEmailBtn = el("nav-email-settings-btn");
+  if (navEmailBtn) {
+    navEmailBtn.addEventListener("click", () => {
+      switchView("email-settings");
+    });
+  }
+
+  // Team & User Management Navigation
+  const navUsersBtn = el("nav-users-settings");
+  if (navUsersBtn) {
+    navUsersBtn.addEventListener("click", () => {
+      switchView("users-settings");
+    });
+  }
+
+  // User Management Toolbar & Modal controls
+  const btnOpenAddUser = el("btn-open-add-user-modal");
+  if (btnOpenAddUser) {
+    btnOpenAddUser.addEventListener("click", openAddUserModal);
+  }
+
+  const userModalCloseBtn = el("user-modal-close-btn");
+  if (userModalCloseBtn) {
+    userModalCloseBtn.addEventListener("click", closeUserModal);
+  }
+
+  const userModalCancelBtn = el("user-modal-cancel-btn");
+  if (userModalCancelBtn) {
+    userModalCancelBtn.addEventListener("click", closeUserModal);
+  }
+
+  const userModalBackdrop = el("user-modal-backdrop");
+  if (userModalBackdrop) {
+    userModalBackdrop.addEventListener("click", closeUserModal);
+  }
+
+  const userEditForm = el("user-edit-form");
+  if (userEditForm) {
+    userEditForm.addEventListener("submit", handleSaveUser);
+  }
+
+  const userSearchInput = el("users-search-input");
+  if (userSearchInput) {
+    userSearchInput.addEventListener("input", (e) => {
+      renderUsersTable(e.target.value);
+    });
+  }
+
+  // Signature Tabs (Plain Text vs HTML)
+  const sigTabBtnText = el("sigtab-btn-text");
+  const sigTabBtnHtml = el("sigtab-btn-html");
+  const sigPanelText = el("sigtab-panel-text");
+  const sigPanelHtml = el("sigtab-panel-html");
+
+  if (sigTabBtnText && sigTabBtnHtml) {
+    sigTabBtnText.addEventListener("click", () => {
+      sigTabBtnText.classList.add("active");
+      sigTabBtnHtml.classList.remove("active");
+      if (sigPanelText) sigPanelText.hidden = false;
+      if (sigPanelHtml) sigPanelHtml.hidden = true;
+      updateSigLivePreview();
+    });
+
+    sigTabBtnHtml.addEventListener("click", () => {
+      sigTabBtnHtml.classList.add("active");
+      sigTabBtnText.classList.remove("active");
+      if (sigPanelHtml) sigPanelHtml.hidden = false;
+      if (sigPanelText) sigPanelText.hidden = true;
+      updateSigLivePreview();
+    });
+  }
+
+  // Realtime Signature preview update on typing
+  const textInput = el("setting-signature-text");
+  const htmlInput = el("setting-signature-html");
+  if (textInput) textInput.addEventListener("input", updateSigLivePreview);
+  if (htmlInput) htmlInput.addEventListener("input", updateSigLivePreview);
+
+  // Save and Reset buttons
+  const saveEmailBtn = el("btn-save-email-settings");
+  if (saveEmailBtn) saveEmailBtn.addEventListener("click", saveEmailSettings);
+
+  const resetSigBtn = el("btn-reset-signature");
+  if (resetSigBtn) resetSigBtn.addEventListener("click", resetDefaultSignature);
+
   const saveWaBtn = el("wa-save-btn");
   if (saveWaBtn) {
     saveWaBtn.addEventListener("click", saveWhatsAppSettings);
@@ -1888,7 +2760,8 @@ function wireEvents() {
     label.textContent = "Syncing…";
     try {
       const result = await api("/api/sync", { method: "POST" });
-      el("sync-meta").textContent = `Last sync: ${result.processed} new message(s) · ${new Date().toLocaleTimeString()}`;
+      const count = result.count ?? result.processed ?? 0;
+      el("sync-meta").textContent = `Last sync: ${count} new message(s) · ${new Date().toLocaleTimeString()}`;
       await loadConversations();
       if (state.selectedId) await selectConversation(state.selectedId);
     } catch (err) {
@@ -1910,5 +2783,6 @@ function wireEvents() {
   const authenticated = await checkAuth();
   if (authenticated) {
     await loadConversations();
+    await loadEmailSettings();
   }
 })();
