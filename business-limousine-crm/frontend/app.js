@@ -20,6 +20,11 @@ const state = {
   tab: "thread",
   user: null,
   view: "conversations",
+  recentNotes: [],
+  notesFilter: "unread",
+  notifOpen: false,
+  composerAttachments: [],
+  expandedMessages: {},
   waSettings: {
     enabled: true,
     threshold_minutes: 10,
@@ -563,6 +568,7 @@ async function loadConversations() {
     state.counts = data.counts;
     renderStatusNav();
     renderConversations();
+    await fetchRecentNotes();
 
     if (state.selectedId) {
       const stillExists = state.conversations.some((c) => c.id === state.selectedId);
@@ -621,7 +627,7 @@ function renderConversations() {
 }
 
 // -------------------------------------------------------------------------
-// Unread Notes Tracking
+// Unread Notes & Notifications Tracking
 // -------------------------------------------------------------------------
 
 function getNotesReadMap() {
@@ -651,6 +657,168 @@ function hasUnreadNotes(convoId, notes) {
   const lastReadTime = new Date(lastRead).getTime();
   return notes.some((n) => new Date(n.created_at).getTime() > lastReadTime);
 }
+
+async function fetchRecentNotes() {
+  if (!state.user) return;
+  try {
+    const data = await api("/api/notes/recent?limit=50");
+    const notes = data.notes || [];
+    const readMap = getNotesReadMap();
+
+    notes.forEach((n) => {
+      const lastReadStr = readMap[n.conversation_id];
+      const lastReadTime = lastReadStr ? new Date(lastReadStr).getTime() : 0;
+      n.isUnread = !lastReadStr || new Date(n.created_at).getTime() > lastReadTime;
+    });
+
+    state.recentNotes = notes;
+    updateNotificationUI();
+  } catch (err) {
+    console.error("Failed to fetch recent notes:", err);
+  }
+}
+
+function updateNotificationUI() {
+  const notes = state.recentNotes || [];
+  const unreadCount = notes.filter((n) => n.isUnread).length;
+
+  const badgeEl = el("notif-badge");
+  if (badgeEl) {
+    if (unreadCount > 0) {
+      badgeEl.textContent = unreadCount > 99 ? "99+" : unreadCount;
+      badgeEl.hidden = false;
+    } else {
+      badgeEl.hidden = true;
+    }
+  }
+
+  const pillEl = el("notif-unread-pill");
+  if (pillEl) {
+    if (unreadCount > 0) {
+      pillEl.textContent = `${unreadCount} new`;
+      pillEl.hidden = false;
+    } else {
+      pillEl.hidden = true;
+    }
+  }
+
+  const tabUnreadCountEl = el("notif-unread-tab-count");
+  if (tabUnreadCountEl) {
+    tabUnreadCountEl.textContent = unreadCount;
+  }
+
+  renderNotificationItems();
+}
+
+function renderNotificationItems() {
+  const container = el("notif-list-container");
+  if (!container) return;
+
+  const filter = state.notesFilter || "unread";
+  const allNotes = state.recentNotes || [];
+  const filtered = filter === "unread" ? allNotes.filter((n) => n.isUnread) : allNotes;
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="notif-empty-state">
+        <svg class="notif-empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <div class="notif-empty-title">${filter === "unread" ? "No unread notes" : "No notes yet"}</div>
+        <div class="notif-empty-desc">${filter === "unread" ? "You're all caught up! No unread team notes." : "Internal notes created on reservations will appear here."}</div>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = filtered.map((n) => {
+    const authorName = escapeHtml(n.author || "Staff");
+    const role = (n.author_role || "STAFF").toUpperCase();
+    const avatarColor = n.author_avatar || "#B87A21";
+    const initials = (n.author || "ST")
+      .split(" ")
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+    
+    const clientName = escapeHtml(n.client_name || n.client_email?.split("@")[0] || `Reservation #${n.conversation_id}`);
+    const route = (n.origin && n.destination) 
+      ? `${escapeHtml(n.origin)} ➔ ${escapeHtml(n.destination)}`
+      : (n.origin ? escapeHtml(n.origin) : (n.destination ? escapeHtml(n.destination) : ""));
+
+    return `
+      <div class="notif-item ${n.isUnread ? "unread" : ""}" data-convo-id="${n.conversation_id}" data-note-id="${n.id}">
+        <div class="notif-avatar" style="background-color: ${avatarColor}">${initials}</div>
+        <div class="notif-item-content">
+          <div class="notif-item-top">
+            <div class="notif-item-author-group">
+              <span class="notif-item-author">${authorName}</span>
+              <span class="notif-item-role">${escapeHtml(role)}</span>
+            </div>
+            <span class="notif-item-time">${formatRelative(n.created_at)}</span>
+          </div>
+          <div class="notif-item-client-row">
+            <span class="notif-item-client-name">${clientName}</span>
+            ${route ? `<span>•</span><span class="notif-item-route">${route}</span>` : ""}
+          </div>
+          <div class="notif-item-text">${escapeHtml(n.note_text)}</div>
+        </div>
+        ${n.isUnread ? `<span class="notif-unread-dot" title="Unread"></span>` : ""}
+      </div>
+    `;
+  }).join("");
+
+  container.querySelectorAll(".notif-item").forEach((item) => {
+    item.addEventListener("click", async () => {
+      const convoId = Number(item.dataset.convoId);
+      const noteId = Number(item.dataset.noteId);
+      await openConversationFromNotification(convoId, noteId);
+    });
+  });
+}
+
+async function openConversationFromNotification(convoId, noteId) {
+  toggleNotifications(false);
+
+  if (state.view !== "conversations") {
+    switchView("conversations");
+  }
+
+  setConversationNotesRead(convoId);
+  await selectConversation(convoId, true, false);
+  setTab("notes");
+  await fetchRecentNotes();
+}
+
+function markAllNotesRead() {
+  const notes = state.recentNotes || [];
+  if (notes.length === 0) return;
+
+  notes.forEach((n) => {
+    setConversationNotesRead(n.conversation_id);
+    n.isUnread = false;
+  });
+
+  updateNotificationUI();
+}
+
+function toggleNotifications(forceState) {
+  const popover = el("notif-dropdown");
+  const btn = el("notif-btn");
+  if (!popover || !btn) return;
+
+  const shouldOpen = typeof forceState === "boolean" ? forceState : popover.hidden;
+  popover.hidden = !shouldOpen;
+  btn.classList.toggle("active", shouldOpen);
+  state.notifOpen = shouldOpen;
+
+  if (shouldOpen) {
+    fetchRecentNotes();
+  }
+}
+
 
 // -------------------------------------------------------------------------
 // Conversation detail
@@ -713,13 +881,214 @@ async function selectConversation(id, reloadDetail = true, switchTab = false) {
     if (dotEl) dotEl.hidden = true;
   }
 
+  // Pre-populate email composer
+  const toInput = el("reply-to");
+  if (toInput) toInput.value = conversation.client_email || "";
+
+  const ccInput = el("reply-cc");
+  if (ccInput) ccInput.value = "";
+  const ccRow = el("cc-field-row");
+  if (ccRow) ccRow.hidden = true;
+
+  state.composerAttachments = [];
+  renderComposerAttachments();
+
+  const toolbarHeading = el("thread-subject-heading");
+  const countPill = el("thread-msg-count-pill");
+  const lastInbound = [...messages].reverse().find((m) => m.direction === "inbound");
+  const subj = lastInbound?.subject || messages[0]?.subject || "Your inquiry";
+  if (toolbarHeading) toolbarHeading.textContent = subj;
+  if (countPill) countPill.textContent = `${messages.length} email${messages.length === 1 ? "" : "s"}`;
+
+  const subjInput = el("reply-subject");
+  if (subjInput) subjInput.value = subj.startsWith("Re:") ? subj : `Re: ${subj}`;
+
+  el("reply-body").value = "";
+  el("reply-status").textContent = "";
+
   renderThread(messages, conversation);
   renderNotes(notes);
+}
 
-  const lastInbound = [...messages].reverse().find((m) => m.direction === "inbound");
-  const subj = lastInbound?.subject || "Your inquiry";
-  el("reply-subject").value = subj.startsWith("Re:") ? subj : `Re: ${subj}`;
-  el("reply-status").textContent = "";
+function formatFileSize(bytes) {
+  if (!bytes || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
+function openImageLightbox(imageUrl, title) {
+  const modal = el("lightbox-modal");
+  const img = el("lightbox-img");
+  const cap = el("lightbox-caption");
+  const dl = el("lightbox-download-link");
+  if (!modal || !img) return;
+
+  img.src = imageUrl;
+  if (cap) cap.textContent = title || "Attachment Image";
+  if (dl) {
+    dl.href = imageUrl;
+    dl.setAttribute("download", title || "image");
+  }
+  modal.hidden = false;
+}
+
+function closeImageLightbox() {
+  const modal = el("lightbox-modal");
+  if (modal) modal.hidden = true;
+}
+
+async function uploadAttachmentFile(file) {
+  if (!file) return null;
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Upload failed (${res.status})`);
+  }
+  return await res.json();
+}
+
+function renderComposerAttachments() {
+  const container = el("composer-attachments");
+  const chipsEl = el("composer-attachment-chips");
+  const countEl = el("attachments-count");
+  if (!container || !chipsEl) return;
+
+  const atts = state.composerAttachments || [];
+  if (atts.length === 0) {
+    container.hidden = true;
+    chipsEl.innerHTML = "";
+    return;
+  }
+
+  container.hidden = false;
+  if (countEl) countEl.textContent = atts.length;
+
+  chipsEl.innerHTML = atts.map((att, idx) => {
+    const isImg = att.content_type && att.content_type.startsWith("image/");
+    const thumbHtml = isImg
+      ? `<img src="${att.url}" class="att-thumb-preview" alt="Preview" />`
+      : `<svg class="att-file-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
+
+    return `
+      <div class="composer-att-chip" data-idx="${idx}">
+        ${thumbHtml}
+        <span class="att-name" title="${escapeHtml(att.filename)}">${escapeHtml(att.filename)}</span>
+        <span class="att-size">(${formatFileSize(att.file_size)})</span>
+        <button type="button" class="att-remove-btn" data-remove-idx="${idx}" title="Remove attachment">✕</button>
+      </div>
+    `;
+  }).join("");
+
+  chipsEl.querySelectorAll(".att-remove-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const idx = Number(btn.dataset.removeIdx);
+      state.composerAttachments.splice(idx, 1);
+      renderComposerAttachments();
+    });
+  });
+}
+
+function applyQuickTemplate(templateKey) {
+  if (!templateKey) return;
+  const convo = state.selectedDetail?.conversation || {};
+  const clientName = convo.client_name || convo.client_email?.split("@")[0] || "Valued Client";
+  const origin = convo.origin || "Brussels Airport";
+  const dest = convo.destination || "City Center";
+  const date = convo.trip_date || "as requested";
+
+  const templates = {
+    quote_confirmation: `Dear ${clientName},
+
+Thank you for contacting Business Limousine. We are pleased to confirm our VIP chauffeur quotation:
+
+• Itinerary: ${origin} ➔ ${dest}
+• Date & Time: ${date}
+• Fleet: Mercedes-Benz VIP Executive (S-Class / V-Class)
+• Included Services: Flight tracking, Meet & Greet at arrival hall with name sign, 60 min complimentary wait time, mineral water & Wi-Fi onboard.
+
+Please let us know if you wish to confirm this booking or have any special requests.
+
+Best regards,
+Dispatch Operations | Business Limousine`,
+
+    chauffeur_assigned: `Dear ${clientName},
+
+Your executive chauffeur has been officially assigned for your transfer on ${date}:
+
+• Chauffeur: Executive Chauffeur
+• Assigned Vehicle: Mercedes-Benz VIP
+• Meeting Location: ${origin} (Chauffeur will meet you with a personalized tablet sign)
+• Drop-off: ${dest}
+
+Our operations team is monitoring your flight schedule in real-time. We remain at your full disposal 24/7.
+
+Warm regards,
+Business Limousine Dispatch`,
+
+    flight_delay: `Dear ${clientName},
+
+We are actively monitoring your flight status. Please rest assured that your chauffeur will adjust pickup timing based on your updated arrival at ${origin}.
+
+No extra waiting charges will apply for flight delays. Have a safe and pleasant journey.
+
+Best regards,
+Business Limousine Team`,
+
+    booking_confirmed: `Dear ${clientName},
+
+We are pleased to confirm that your reservation with Business Limousine is secured:
+
+• Client: ${clientName}
+• Pickup: ${origin}
+• Drop-off: ${dest}
+• Schedule: ${date}
+
+Thank you for choosing Business Limousine. We look forward to welcoming you.
+
+Sincerely,
+Business Limousine Management`,
+  };
+
+  const bodyEl = el("reply-body");
+  if (bodyEl && templates[templateKey]) {
+    bodyEl.value = templates[templateKey];
+    bodyEl.focus();
+  }
+}
+
+function applyFormatting(formatType) {
+  const textarea = el("reply-body");
+  if (!textarea) return;
+
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const selectedText = textarea.value.substring(start, end);
+
+  let replacement = "";
+  if (formatType === "bold") {
+    replacement = `**${selectedText || "bold text"}**`;
+  } else if (formatType === "italic") {
+    replacement = `*${selectedText || "italic text"}*`;
+  } else if (formatType === "bullet") {
+    replacement = selectedText
+      ? selectedText.split("\n").map((line) => `• ${line}`).join("\n")
+      : "\n• Option 1\n• Option 2\n";
+  } else if (formatType === "quote") {
+    replacement = selectedText
+      ? selectedText.split("\n").map((line) => `> ${line}`).join("\n")
+      : "\n> Quoted text\n";
+  }
+
+  textarea.setRangeText(replacement, start, end, "end");
+  textarea.focus();
 }
 
 function renderStatusSelect(currentStatus) {
@@ -733,8 +1102,12 @@ function renderStatusSelect(currentStatus) {
 
 function renderThread(messages, convo) {
   const threadEl = el("thread");
+  const toolbarHeading = el("thread-subject-heading");
+  const countPill = el("thread-msg-count-pill");
+
   if (!messages || messages.length === 0) {
     threadEl.innerHTML = `<div style="color:var(--text-muted); font-size:13px; padding: 20px 0;">No messages in this thread yet.</div>`;
+    if (countPill) countPill.textContent = "0 emails";
     return;
   }
 
@@ -744,14 +1117,26 @@ function renderThread(messages, convo) {
     return timeA - timeB;
   });
 
+  const lastInbound = [...sortedMessages].reverse().find((m) => m.direction === "inbound");
+  const mainSubject = lastInbound?.subject || sortedMessages[0]?.subject || "VIP Reservation Inquiry";
+  if (toolbarHeading) toolbarHeading.textContent = mainSubject;
+  if (countPill) countPill.textContent = `${sortedMessages.length} email${sortedMessages.length === 1 ? "" : "s"}`;
+
+  const lastMsgId = sortedMessages[sortedMessages.length - 1]?.id;
+
   threadEl.innerHTML = sortedMessages.map((m) => {
     const isInbound = m.direction === "inbound";
     const senderName = isInbound
       ? (convo?.client_name || m.from_addr || "Client")
-      : "Business Limousine";
+      : "Business Limousine Dispatch";
     const avatarInitial = (senderName.trim().charAt(0) || (isInbound ? "C" : "B")).toUpperCase();
+    const roleTag = isInbound ? "CLIENT" : "DISPATCH";
 
-    // Clean up quoted email chains from main body
+    const isExpanded = state.expandedMessages[m.id] !== undefined
+      ? state.expandedMessages[m.id]
+      : (m.id === lastMsgId || sortedMessages.length === 1);
+
+    // Clean quoted email text
     let bodyText = (m.body_text || "").trim();
     let quotedText = "";
     const quotePattern = /(?:^|\n)(?:>|On\s+.+wrote:|Le\s+.+a\s+écrit\s*:|El\s+.+escribió:)/i;
@@ -760,33 +1145,188 @@ function renderThread(messages, convo) {
       quotedText = bodyText.slice(match).trim();
       bodyText = bodyText.slice(0, match).trim();
     }
-    if (!bodyText && !quotedText) {
+    if (!bodyText && !m.body_html && !quotedText) {
       bodyText = "(empty message)";
     }
 
-    return `
-      <div class="message ${m.direction}">
-        <div class="message-header">
-          <div class="message-avatar">${escapeHtml(avatarInitial)}</div>
-          <div class="message-meta-info">
-            <span class="message-author">${escapeHtml(senderName)}</span>
-            <span class="message-time">${formatTimestamp(m.received_at || m.created_at)}</span>
-            ${m.ai_category ? `<span class="status-pill status-${m.ai_category}" style="font-size: 8.5px; padding: 1px 5px;">${m.ai_category}</span>` : ""}
+    // Attachments
+    const attachments = m.attachments || [];
+    let attachmentsHtml = "";
+    if (attachments && attachments.length > 0) {
+      const imgCards = [];
+      const docCards = [];
+
+      attachments.forEach((att) => {
+        const isImg = att.content_type && att.content_type.startsWith("image/");
+        if (isImg) {
+          imgCards.push(`
+            <div class="att-img-card" data-img-url="${att.url}" data-img-title="${escapeHtml(att.filename)}">
+              <img src="${att.url}" class="att-img-thumb" alt="${escapeHtml(att.filename)}" loading="lazy" />
+              <div class="att-img-overlay">
+                <span class="att-img-title">${escapeHtml(att.filename)}</span>
+              </div>
+            </div>
+          `);
+        } else {
+          docCards.push(`
+            <a href="${att.url}" download="${escapeHtml(att.filename)}" target="_blank" class="attachment-chip" title="Download ${escapeHtml(att.filename)}">
+              <svg class="att-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+              <span class="att-name">${escapeHtml(att.filename)}</span>
+              <span class="att-size">(${formatFileSize(att.file_size)})</span>
+            </a>
+          `);
+        }
+      });
+
+      attachmentsHtml = `
+        <div class="email-card-attachments">
+          <div class="attachments-section-title">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+            <span>Attachments (${attachments.length})</span>
+          </div>
+          <div class="email-attachment-grid">
+            ${imgCards.join("")}
+            ${docCards.join("")}
           </div>
         </div>
-        <div class="message-bubble">
-          ${m.subject ? `<div class="message-subject">${escapeHtml(m.subject)}</div>` : ""}
-          <div class="message-body">${escapeHtml(bodyText)}</div>
+      `;
+    }
+
+    const ccPill = m.cc_addr 
+      ? `<span class="cc-badge-chip">CC: ${escapeHtml(m.cc_addr)}</span>` 
+      : "";
+
+    return `
+      <div class="email-card ${m.direction} ${isExpanded ? "" : "collapsed"}" data-msg-id="${m.id}">
+        <div class="email-card-head">
+          <div class="email-card-head-left">
+            <div class="email-sender-avatar ${isInbound ? "inbound-avatar" : "outbound-avatar"}">
+              ${escapeHtml(avatarInitial)}
+            </div>
+            <div class="email-header-info">
+              <div class="email-header-top-row">
+                <span class="email-sender-name">${escapeHtml(senderName)}</span>
+                <span class="email-sender-role-tag ${isInbound ? "" : "outbound-tag"}">${roleTag}</span>
+                ${m.ai_category ? `<span class="status-pill status-${m.ai_category}" style="font-size: 8.5px; padding: 1px 5px;">${m.ai_category}</span>` : ""}
+              </div>
+              <div class="email-header-subrow">
+                <span class="email-recipients-summary">
+                  to ${escapeHtml(m.to_addr || convo?.client_email || "recipient")}
+                  ${ccPill}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="email-card-head-right">
+            <span class="email-time">${formatTimestamp(m.received_at || m.created_at)}</span>
+            <span class="email-collapse-toggle">▼</span>
+          </div>
+        </div>
+
+        <div class="email-meta-details">
+          <div class="meta-detail-row">
+            <span class="meta-detail-label">From:</span>
+            <span class="meta-detail-value">${escapeHtml(m.from_addr || senderName)}</span>
+          </div>
+          <div class="meta-detail-row">
+            <span class="meta-detail-label">To:</span>
+            <span class="meta-detail-value">${escapeHtml(m.to_addr || convo?.client_email || "")}</span>
+          </div>
+          ${m.cc_addr ? `
+            <div class="meta-detail-row">
+              <span class="meta-detail-label">Cc:</span>
+              <span class="meta-detail-value">${escapeHtml(m.cc_addr)}</span>
+            </div>
+          ` : ""}
+          <div class="meta-detail-row">
+            <span class="meta-detail-label">Date:</span>
+            <span class="meta-detail-value">${new Date(m.received_at || m.created_at).toUTCString()}</span>
+          </div>
+          ${m.subject ? `
+            <div class="meta-detail-row">
+              <span class="meta-detail-label">Subject:</span>
+              <span class="meta-detail-value">${escapeHtml(m.subject)}</span>
+            </div>
+          ` : ""}
+        </div>
+
+        <div class="email-card-body">
+          ${m.subject && isExpanded ? `<div class="email-subject-line">${escapeHtml(m.subject)}</div>` : ""}
+          ${m.body_html ? `<div class="email-body-html">${m.body_html}</div>` : `<div class="email-body-text">${escapeHtml(bodyText)}</div>`}
           ${quotedText ? `
             <details class="message-quote">
               <summary>Quoted email history</summary>
               <div class="message-quote-body">${escapeHtml(quotedText)}</div>
             </details>
           ` : ""}
+          ${attachmentsHtml}
+        </div>
+
+        <div class="email-card-footer">
+          <button type="button" class="card-action-btn card-reply-btn" data-from="${escapeHtml(m.from_addr || convo?.client_email || '')}" data-subj="${escapeHtml(m.subject || '')}">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+            <span>Reply</span>
+          </button>
+          ${m.cc_addr ? `
+            <button type="button" class="card-action-btn card-reply-all-btn" data-from="${escapeHtml(m.from_addr || convo?.client_email || '')}" data-cc="${escapeHtml(m.cc_addr)}" data-subj="${escapeHtml(m.subject || '')}">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 17 2 12 7 7"></polyline><polyline points="12 17 7 12 12 7"></polyline><path d="M22 18v-2a4 4 0 0 0-4-4H7"></path></svg>
+              <span>Reply All</span>
+            </button>
+          ` : ""}
         </div>
       </div>
     `;
   }).join("");
+
+  // Attach card collapse/expand toggles
+  threadEl.querySelectorAll(".email-card-head").forEach((head) => {
+    head.addEventListener("click", (e) => {
+      const card = head.closest(".email-card");
+      if (!card) return;
+      const msgId = Number(card.dataset.msgId);
+      const isNowCollapsed = !card.classList.contains("collapsed");
+      card.classList.toggle("collapsed", isNowCollapsed);
+      state.expandedMessages[msgId] = !isNowCollapsed;
+    });
+  });
+
+  // Attach Lightbox click handlers
+  threadEl.querySelectorAll(".att-img-card").forEach((card) => {
+    card.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openImageLightbox(card.dataset.imgUrl, card.dataset.imgTitle);
+    });
+  });
+
+  // Attach Reply / Reply All buttons inside cards
+  threadEl.querySelectorAll(".card-reply-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const fromAddr = btn.dataset.from;
+      const subj = btn.dataset.subj;
+      if (fromAddr) el("reply-to").value = fromAddr;
+      if (subj) el("reply-subject").value = subj.startsWith("Re:") ? subj : `Re: ${subj}`;
+      el("reply-body").focus();
+      el("email-composer").scrollIntoView({ behavior: "smooth" });
+    });
+  });
+
+  threadEl.querySelectorAll(".card-reply-all-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const fromAddr = btn.dataset.from;
+      const ccAddr = btn.dataset.cc;
+      const subj = btn.dataset.subj;
+      if (fromAddr) el("reply-to").value = fromAddr;
+      if (ccAddr) {
+        el("reply-cc").value = ccAddr;
+        el("cc-field-row").hidden = false;
+      }
+      if (subj) el("reply-subject").value = subj.startsWith("Re:") ? subj : `Re: ${subj}`;
+      el("reply-body").focus();
+      el("email-composer").scrollIntoView({ behavior: "smooth" });
+    });
+  });
 
   setTimeout(() => {
     threadEl.scrollTop = threadEl.scrollHeight;
@@ -837,6 +1377,7 @@ function setTab(tab) {
     if (state.selectedDetail?.notes) {
       renderNotes(state.selectedDetail.notes);
     }
+    fetchRecentNotes();
   }
 }
 
@@ -847,6 +1388,49 @@ function setTab(tab) {
 // -------------------------------------------------------------------------
 
 function wireEvents() {
+  // Topbar Notification Bell and Dropdown Box
+  const notifBtn = el("notif-btn");
+  if (notifBtn) {
+    notifBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleNotifications();
+    });
+  }
+
+  document.addEventListener("click", (e) => {
+    const notifWrapper = el("notif-wrapper");
+    if (notifWrapper && !notifWrapper.contains(e.target)) {
+      toggleNotifications(false);
+    }
+  });
+
+  const markAllNotesBtn = el("notif-mark-all-btn");
+  if (markAllNotesBtn) {
+    markAllNotesBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      markAllNotesRead();
+    });
+  }
+
+  const tabUnread = el("notif-tab-unread");
+  const tabAll = el("notif-tab-all");
+  if (tabUnread && tabAll) {
+    tabUnread.addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.notesFilter = "unread";
+      tabUnread.classList.add("active");
+      tabAll.classList.remove("active");
+      renderNotificationItems();
+    });
+    tabAll.addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.notesFilter = "all";
+      tabAll.classList.add("active");
+      tabUnread.classList.remove("active");
+      renderNotificationItems();
+    });
+  }
+
   // Login form
   el("login-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -927,33 +1511,217 @@ function wireEvents() {
     await loadConversations();
   });
 
-  el("reply-send-btn").addEventListener("click", async () => {
+  async function handleSendEmailReply() {
     const id = state.selectedId;
-    const subject = el("reply-subject").value.trim();
-    const body = el("reply-body").value.trim();
+    if (!id) return;
+
+    const toAddr = el("reply-to")?.value.trim() || "";
+    const ccAddr = el("reply-cc")?.value.trim() || "";
+    const subject = el("reply-subject")?.value.trim() || "";
+    const body = el("reply-body")?.value.trim() || "";
+    const attachments = state.composerAttachments || [];
     const statusEl = el("reply-status");
-    if (!body) {
-      statusEl.textContent = "Write a message before sending.";
-      statusEl.className = "reply-status error";
+    const sendBtn = el("reply-send-btn");
+
+    if (!body && attachments.length === 0) {
+      if (statusEl) {
+        statusEl.textContent = "Write a message or attach a file before sending.";
+        statusEl.className = "reply-status error";
+      }
       return;
     }
-    el("reply-send-btn").disabled = true;
-    statusEl.textContent = "Sending…";
-    statusEl.className = "reply-status";
+
+    if (sendBtn) sendBtn.disabled = true;
+    if (statusEl) {
+      statusEl.textContent = "Sending email…";
+      statusEl.className = "reply-status";
+    }
+
     try {
       await api(`/api/conversations/${id}/reply`, {
         method: "POST",
-        body: JSON.stringify({ subject, body_text: body }),
+        body: JSON.stringify({
+          to_addr: toAddr,
+          cc_addr: ccAddr,
+          subject: subject,
+          body_text: body,
+          attachments: attachments,
+        }),
       });
-      statusEl.textContent = "Sent.";
-      statusEl.className = "reply-status ok";
+
+      if (statusEl) {
+        statusEl.textContent = "✓ Sent successfully.";
+        statusEl.className = "reply-status ok";
+      }
+
       el("reply-body").value = "";
-      await selectConversation(id);
+      state.composerAttachments = [];
+      renderComposerAttachments();
+
+      await selectConversation(id, true, false);
+      await loadConversations();
     } catch (err) {
-      statusEl.textContent = err.message;
-      statusEl.className = "reply-status error";
+      if (statusEl) {
+        statusEl.textContent = `Error: ${err.message}`;
+        statusEl.className = "reply-status error";
+      }
     } finally {
-      el("reply-send-btn").disabled = false;
+      if (sendBtn) sendBtn.disabled = false;
+    }
+  }
+
+  // CC Toggle Button
+  const btnToggleCc = el("btn-toggle-cc");
+  if (btnToggleCc) {
+    btnToggleCc.addEventListener("click", () => {
+      const ccRow = el("cc-field-row");
+      if (ccRow) {
+        ccRow.hidden = !ccRow.hidden;
+        if (!ccRow.hidden) {
+          el("reply-cc")?.focus();
+        }
+      }
+    });
+  }
+
+  // Jump to Reply Button
+  const jumpReplyBtn = el("thread-jump-reply-btn");
+  if (jumpReplyBtn) {
+    jumpReplyBtn.addEventListener("click", () => {
+      el("email-composer")?.scrollIntoView({ behavior: "smooth" });
+      el("reply-body")?.focus();
+    });
+  }
+
+  // File & Image Attach Buttons
+  const btnAttachFile = el("btn-attach-file");
+  const fileInput = el("reply-file-input");
+  if (btnAttachFile && fileInput) {
+    btnAttachFile.addEventListener("click", () => fileInput.click());
+  }
+
+  const btnAttachImage = el("btn-attach-image");
+  const imgInput = el("reply-image-input");
+  if (btnAttachImage && imgInput) {
+    btnAttachImage.addEventListener("click", () => imgInput.click());
+  }
+
+  async function handleFilesSelected(files) {
+    if (!files || files.length === 0) return;
+    const statusEl = el("reply-status");
+    if (statusEl) {
+      statusEl.textContent = "Uploading attachments…";
+      statusEl.className = "reply-status";
+    }
+
+    for (const file of files) {
+      try {
+        const uploaded = await uploadAttachmentFile(file);
+        if (uploaded) {
+          if (!state.composerAttachments) state.composerAttachments = [];
+          state.composerAttachments.push(uploaded);
+          renderComposerAttachments();
+        }
+      } catch (err) {
+        if (statusEl) {
+          statusEl.textContent = `Upload failed: ${err.message}`;
+          statusEl.className = "reply-status error";
+        }
+      }
+    }
+
+    if (statusEl) {
+      statusEl.textContent = "";
+    }
+  }
+
+  if (fileInput) {
+    fileInput.addEventListener("change", (e) => {
+      handleFilesSelected(e.target.files);
+      fileInput.value = "";
+    });
+  }
+
+  if (imgInput) {
+    imgInput.addEventListener("change", (e) => {
+      handleFilesSelected(e.target.files);
+      imgInput.value = "";
+    });
+  }
+
+  // Drag & Drop onto Composer
+  const dropzone = el("composer-dropzone");
+  const dropOverlay = el("composer-drop-overlay");
+  if (dropzone && dropOverlay) {
+    ["dragenter", "dragover"].forEach((eventName) => {
+      dropzone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropOverlay.hidden = false;
+      });
+    });
+
+    ["dragleave", "dragend"].forEach((eventName) => {
+      dropzone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropOverlay.hidden = true;
+      });
+    });
+
+    dropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropOverlay.hidden = true;
+      if (e.dataTransfer && e.dataTransfer.files) {
+        handleFilesSelected(e.dataTransfer.files);
+      }
+    });
+  }
+
+  // Quick Response Templates
+  const templateSelect = el("composer-template-select");
+  if (templateSelect) {
+    templateSelect.addEventListener("change", (e) => {
+      applyQuickTemplate(e.target.value);
+      templateSelect.value = "";
+    });
+  }
+
+  // Formatting Toolbar Buttons
+  document.querySelectorAll(".format-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      applyFormatting(btn.dataset.format);
+    });
+  });
+
+  // Ctrl + Enter shortcut
+  const replyBody = el("reply-body");
+  if (replyBody) {
+    replyBody.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        handleSendEmailReply();
+      }
+    });
+  }
+
+  // Reply Send Button
+  const replySendBtn = el("reply-send-btn");
+  if (replySendBtn) {
+    replySendBtn.addEventListener("click", handleSendEmailReply);
+  }
+
+  // Lightbox Modal Controls
+  const lightboxCloseBtn = el("lightbox-close-btn");
+  const lightboxBackdrop = el("lightbox-backdrop");
+  if (lightboxCloseBtn) lightboxCloseBtn.addEventListener("click", closeImageLightbox);
+  if (lightboxBackdrop) lightboxBackdrop.addEventListener("click", closeImageLightbox);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeImageLightbox();
+      toggleNotifications(false);
     }
   });
 
@@ -977,6 +1745,7 @@ function wireEvents() {
       renderNotes(detail.notes);
       const dotEl = el("notes-unread-dot");
       if (dotEl) dotEl.hidden = true;
+      fetchRecentNotes();
     } catch (err) {
       console.error("Failed to add note:", err);
     } finally {

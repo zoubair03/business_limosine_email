@@ -7,12 +7,16 @@ Run with:  python app.py
 from datetime import timedelta
 import json
 import logging
+import mimetypes
 import os
+from pathlib import Path
 import sys
 import threading
 import time
+import uuid
 
 from flask import Flask, jsonify, request, send_from_directory
+from werkzeug.utils import secure_filename
 
 from auth import (
     get_current_user,
@@ -23,7 +27,7 @@ from auth import (
     roles_required,
     verify_password,
 )
-from config import Config, PROJECT_ROOT
+from config import Config, PROJECT_ROOT, UPLOADS_DIR
 from database import db_session, init_db
 from email_sender import send_reply
 import models
@@ -38,7 +42,12 @@ app.secret_key = Config.SECRET_KEY
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
+app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25 MB max upload
 
+
+# --------------------------------------------------------------------------
+# Serialization helpers
+# --------------------------------------------------------------------------
 
 def row_to_conversation(row):
     return {
@@ -57,6 +66,17 @@ def row_to_conversation(row):
 
 
 def row_to_message(row):
+    att_raw = row["attachments"] if "attachments" in row.keys() else None
+    attachments = []
+    if att_raw:
+        if isinstance(att_raw, str):
+            try:
+                attachments = json.loads(att_raw)
+            except Exception:
+                attachments = []
+        elif isinstance(att_raw, list):
+            attachments = att_raw
+
     return {
         "id": row["id"],
         "conversation_id": row["conversation_id"],
@@ -65,8 +85,11 @@ def row_to_message(row):
         "message_id": row["message_id"],
         "from_addr": row["from_addr"],
         "to_addr": row["to_addr"],
+        "cc_addr": row["cc_addr"] if "cc_addr" in row.keys() else None,
         "subject": row["subject"],
         "body_text": row["body_text"],
+        "body_html": row["body_html"],
+        "attachments": attachments,
         "ai_category": row["ai_category"],
         "ai_confidence": row["ai_confidence"],
         "received_at": row["received_at"],
@@ -93,6 +116,39 @@ def row_to_note(row):
 @app.route("/")
 def index():
     return send_from_directory(FRONTEND_DIR, "index.html")
+
+
+@app.route("/uploads/<path:filename>")
+def serve_uploads(filename):
+    return send_from_directory(str(UPLOADS_DIR), filename)
+
+
+@app.post("/api/upload")
+@login_required
+def api_upload():
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    file = request.files["file"]
+    if not file or not file.filename:
+        return jsonify({"error": "Empty filename"}), 400
+
+    original_name = secure_filename(file.filename) or f"file_{uuid.uuid4().hex[:6]}"
+    unique_prefix = uuid.uuid4().hex[:8]
+    disk_filename = f"{unique_prefix}_{original_name}"
+
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    save_path = UPLOADS_DIR / disk_filename
+    file.save(str(save_path))
+
+    file_size = save_path.stat().st_size
+    content_type = file.content_type or mimetypes.guess_type(original_name)[0] or "application/octet-stream"
+
+    return jsonify({
+        "filename": original_name,
+        "file_size": file_size,
+        "content_type": content_type,
+        "url": f"/uploads/{disk_filename}"
+    })
 
 
 # --------------------------------------------------------------------------
@@ -222,6 +278,34 @@ def api_update_conversation(conversation_id):
 # Notes
 # --------------------------------------------------------------------------
 
+def row_to_recent_note(row):
+    return {
+        "id": row["id"],
+        "conversation_id": row["conversation_id"],
+        "user_id": row["user_id"] if "user_id" in row.keys() else None,
+        "author": row["author"],
+        "author_role": row["author_role"] if "author_role" in row.keys() else None,
+        "author_avatar": row["author_avatar"] if "author_avatar" in row.keys() else "#C5A059",
+        "note_text": row["note_text"],
+        "created_at": row["created_at"],
+        "client_name": row["client_name"] if "client_name" in row.keys() else None,
+        "client_email": row["client_email"] if "client_email" in row.keys() else None,
+        "origin": row["origin"] if "origin" in row.keys() else None,
+        "destination": row["destination"] if "destination" in row.keys() else None,
+        "trip_date": row["trip_date"] if "trip_date" in row.keys() else None,
+        "conversation_status": row["conversation_status"] if "conversation_status" in row.keys() else None,
+    }
+
+
+@app.get("/api/notes/recent")
+@login_required
+def api_list_recent_notes():
+    limit = int(request.args.get("limit", 50))
+    with db_session() as conn:
+        notes = models.list_recent_notes(conn, limit=limit)
+    return jsonify({"notes": [row_to_recent_note(n) for n in notes]})
+
+
 @app.post("/api/conversations/<int:conversation_id>/notes")
 @login_required
 def api_add_note(conversation_id):
@@ -243,6 +327,7 @@ def api_add_note(conversation_id):
     return jsonify({"notes": [row_to_note(n) for n in notes]})
 
 
+
 # --------------------------------------------------------------------------
 # Reply
 # --------------------------------------------------------------------------
@@ -253,8 +338,13 @@ def api_reply(conversation_id):
     data = request.get_json(force=True) or {}
     subject = (data.get("subject") or "").strip()
     body_text = (data.get("body_text") or "").strip()
-    if not body_text:
-        return jsonify({"error": "body_text is required"}), 400
+    body_html = data.get("body_html")
+    to_addr = (data.get("to_addr") or "").strip()
+    cc_addr = data.get("cc_addr")
+    attachments = data.get("attachments") or []
+
+    if not body_text and not body_html and not attachments:
+        return jsonify({"error": "Message body or attachment is required"}), 400
 
     current_user = get_current_user()
     user_id = current_user["id"] if current_user else None
@@ -265,34 +355,45 @@ def api_reply(conversation_id):
             return jsonify({"error": "not found"}), 404
         last_inbound = models.get_last_inbound_message(conn, conversation_id)
 
+    recipient = to_addr or convo["client_email"]
     in_reply_to = last_inbound["message_id"] if last_inbound else None
     subject = subject or f"Re: {(last_inbound['subject'] if last_inbound else 'Your inquiry')}"
 
     try:
         new_message_id = send_reply(
-            to_addr=convo["client_email"],
+            to_addr=recipient,
             subject=subject,
             body_text=body_text,
+            cc_addr=cc_addr,
+            body_html=body_html,
+            attachments=attachments,
             in_reply_to_message_id=in_reply_to,
         )
     except Exception as exc:
         logger.exception("Failed to send reply")
-        return jsonify({"error": f"failed to send email: {exc}"}), 502
+        return jsonify({"error": f"Failed to send email: {exc}"}), 502
 
     with db_session() as conn:
-        models.add_message(
+        msg_id = models.add_message(
             conn,
             conversation_id=conversation_id,
             direction="outbound",
             subject=subject,
             body_text=body_text,
-            body_html=None,
+            body_html=body_html,
             from_addr=Config.SMTP_USER,
-            to_addr=convo["client_email"],
+            to_addr=recipient,
+            cc_addr=cc_addr if isinstance(cc_addr, str) else (", ".join(cc_addr) if cc_addr else None),
+            attachments=attachments,
             message_id=new_message_id,
             in_reply_to=in_reply_to,
         )
         models.maybe_auto_update_status(conn, conversation_id, "DISCUSSION")
+        if user_id:
+            try:
+                conn.execute("UPDATE messages SET user_id = ? WHERE id = ?", (user_id, msg_id))
+            except Exception:
+                pass
         messages = models.list_messages(conn, conversation_id)
 
     return jsonify({"messages": [row_to_message(m) for m in messages]})

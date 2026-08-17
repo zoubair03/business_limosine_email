@@ -16,6 +16,8 @@ except ImportError:
 
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BACKEND_DIR.parent
+UPLOADS_DIR = PROJECT_ROOT / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULTS = {
     "IMAP_HOST": "imap.gmail.com",

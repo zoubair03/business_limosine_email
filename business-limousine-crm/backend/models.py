@@ -6,6 +6,7 @@ so this module is safe to call both from the Flask request handlers
 and from the background sync worker.
 """
 from datetime import datetime, timezone
+import json
 
 from database import db_session
 
@@ -254,19 +255,24 @@ def message_exists(conn, message_id):
 
 
 def add_message(conn, conversation_id, direction, subject, body_text, body_html,
-                 from_addr, to_addr, message_id=None, in_reply_to=None,
+                 from_addr, to_addr, cc_addr=None, attachments=None, message_id=None, in_reply_to=None,
                  ai_category=None, ai_confidence=None, received_at=None):
     now = _now()
     received_at = received_at or now
+    if isinstance(attachments, (list, dict)):
+        attachments_str = json.dumps(attachments)
+    else:
+        attachments_str = attachments
+
     cur = conn.execute(
         """
         INSERT OR IGNORE INTO messages
-            (conversation_id, direction, message_id, in_reply_to, from_addr, to_addr,
-             subject, body_text, body_html, ai_category, ai_confidence, received_at, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (conversation_id, direction, message_id, in_reply_to, from_addr, to_addr, cc_addr,
+             subject, body_text, body_html, attachments, ai_category, ai_confidence, received_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (conversation_id, direction, message_id, in_reply_to, from_addr, to_addr,
-         subject, body_text, body_html, ai_category, ai_confidence, received_at, now),
+        (conversation_id, direction, message_id, in_reply_to, from_addr, to_addr, cc_addr,
+         subject, body_text, body_html, attachments_str, ai_category, ai_confidence, received_at, now),
     )
     touch_conversation_last_message(conn, conversation_id, received_at)
     return cur.lastrowid
@@ -389,6 +395,33 @@ def list_notes(conn, conversation_id):
         """,
         (conversation_id,),
     ).fetchall()
+
+
+def list_recent_notes(conn, limit=50):
+    """
+    Returns recent internal notes across all conversations with client name, route, and status.
+    """
+    return conn.execute(
+        """
+        SELECT n.id, n.conversation_id, n.user_id, n.note_text, n.created_at,
+               COALESCE(u.full_name, n.author, 'Staff') AS author,
+               u.role AS author_role,
+               u.avatar_color AS author_avatar,
+               c.client_name,
+               c.client_email,
+               c.origin,
+               c.destination,
+               c.trip_date,
+               c.status AS conversation_status
+        FROM notes n
+        LEFT JOIN users u ON n.user_id = u.id
+        LEFT JOIN conversations c ON n.conversation_id = c.id
+        ORDER BY n.created_at DESC, n.id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+
 
 
 # --------------------------------------------------------------------------

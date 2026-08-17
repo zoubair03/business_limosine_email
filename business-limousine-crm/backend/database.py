@@ -50,9 +50,11 @@ CREATE TABLE IF NOT EXISTS messages (
     in_reply_to     TEXT,
     from_addr       TEXT,
     to_addr         TEXT,
+    cc_addr         TEXT,
     subject         TEXT,
     body_text       TEXT,
     body_html       TEXT,
+    attachments     TEXT,
     ai_category     TEXT,
     ai_confidence   REAL,
     received_at     TEXT NOT NULL,
@@ -159,6 +161,14 @@ def init_db():
             pass
         try:
             conn.execute("ALTER TABLE conversations ADD COLUMN whatsapp_alert_sent INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE messages ADD COLUMN cc_addr TEXT")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE messages ADD COLUMN attachments TEXT")
         except Exception:
             pass
 

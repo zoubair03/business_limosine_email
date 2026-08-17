@@ -4,11 +4,15 @@ Python dict, and pulls out structured fields when the mail is clearly a
 website contact-form submission (e.g. "Name: ...", "Pickup: ...").
 """
 from datetime import timezone
+import os
+from pathlib import Path
 import re
+import uuid
 from email import message_from_bytes, policy
 from email.utils import parseaddr, parsedate_to_datetime
 
 from bs4 import BeautifulSoup
+from config import UPLOADS_DIR
 
 
 def _decode(part):
@@ -38,14 +42,15 @@ def parse_raw_email(raw_bytes):
     """
     Returns a dict:
         message_id, in_reply_to, references, subject,
-        from_name, from_addr, to_addr, date_iso,
-        body_text, body_html
+        from_name, from_addr, to_addr, cc_addr, date_iso,
+        body_text, body_html, attachments
     """
     msg = message_from_bytes(raw_bytes, policy=policy.default)
 
     subject = msg.get("Subject", "") or ""
     from_name, from_addr = parseaddr(msg.get("From", ""))
     _, to_addr = parseaddr(msg.get("To", ""))
+    cc_header = msg.get("Cc", "") or ""
     message_id = msg.get("Message-ID")
     in_reply_to = msg.get("In-Reply-To")
     references = msg.get("References")
@@ -65,13 +70,35 @@ def parse_raw_email(raw_bytes):
         date_iso = None
 
     body_text, body_html = "", ""
+    attachments = []
 
     if msg.is_multipart():
         for part in msg.walk():
             content_type = part.get_content_type()
             disposition = str(part.get("Content-Disposition") or "")
-            if "attachment" in disposition:
+            filename = part.get_filename()
+
+            if "attachment" in disposition or filename:
+                payload = part.get_payload(decode=True)
+                if payload:
+                    clean_filename = filename or f"attachment_{uuid.uuid4().hex[:8]}"
+                    # Sanitize filename
+                    safe_name = re.sub(r"[^\w\.\-\s]", "_", clean_filename)
+                    disk_filename = f"inbound_{uuid.uuid4().hex[:8]}_{safe_name}"
+                    file_path = UPLOADS_DIR / disk_filename
+                    try:
+                        with open(file_path, "wb") as f:
+                            f.write(payload)
+                        attachments.append({
+                            "filename": clean_filename,
+                            "file_size": len(payload),
+                            "content_type": content_type,
+                            "url": f"/uploads/{disk_filename}",
+                        })
+                    except Exception as ex:
+                        pass
                 continue
+
             if content_type == "text/plain" and not body_text:
                 body_text = _decode(part)
             elif content_type == "text/html" and not body_html:
@@ -94,9 +121,11 @@ def parse_raw_email(raw_bytes):
         "from_name": from_name.strip(),
         "from_addr": from_addr.strip().lower(),
         "to_addr": to_addr.strip(),
+        "cc_addr": cc_header.strip() if cc_header else None,
         "date_iso": date_iso,
         "body_text": body_text.strip(),
         "body_html": body_html,
+        "attachments": attachments if attachments else None,
     }
 
 
