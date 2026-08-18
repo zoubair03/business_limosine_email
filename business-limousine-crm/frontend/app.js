@@ -190,7 +190,7 @@ async function handleLogin(email, password) {
 async function handleLogout() {
   try {
     await fetch("/api/auth/logout", { method: "POST" });
-  } catch (err) {}
+  } catch (err) { }
   state.user = null;
   state.status = "ALL"; // Reset view filter to ALL
   state.selectedId = null;
@@ -316,7 +316,7 @@ function switchView(view) {
     if (waView) waView.hidden = false;
     if (waNavBtn) waNavBtn.classList.add("active");
     document.querySelectorAll("#status-nav .status-nav-item").forEach((b) => b.classList.remove("active"));
-    
+
     if (searchWrap) searchWrap.hidden = true;
     if (topbarActions) topbarActions.hidden = false;
     if (eyebrowEl) eyebrowEl.textContent = "AUTOMATION & ALERTS";
@@ -327,14 +327,14 @@ function switchView(view) {
     if (convContent) convContent.hidden = false;
     if (waView) waView.hidden = true;
     if (waNavBtn) waNavBtn.classList.remove("active");
-    
+
     document.querySelectorAll("#status-nav .status-nav-item").forEach((b) => b.classList.remove("active"));
     const activeStatusBtn = document.querySelector(`#status-nav .status-nav-item[data-status="${state.status}"]`);
     if (activeStatusBtn) activeStatusBtn.classList.add("active");
 
     if (searchWrap) searchWrap.hidden = false;
     if (topbarActions) topbarActions.hidden = true;
-    
+
     const meta = getStatusMeta(state.status);
     if (eyebrowEl) eyebrowEl.textContent = meta.eyebrow;
     if (titleEl) titleEl.textContent = meta.label;
@@ -449,8 +449,8 @@ function renderWaNumbers() {
   const container = el("wa-number-list");
   if (!container) return;
 
-  const rawList = state.waSettings.dispatcher_numbers && state.waSettings.dispatcher_numbers.length > 0 
-    ? state.waSettings.dispatcher_numbers 
+  const rawList = state.waSettings.dispatcher_numbers && state.waSettings.dispatcher_numbers.length > 0
+    ? state.waSettings.dispatcher_numbers
     : ["8000019066"];
 
   container.innerHTML = rawList.map((item, idx) => {
@@ -523,7 +523,7 @@ async function saveWhatsAppSettings() {
   const saveBtn = el("wa-save-btn");
   const statusMsg = el("wa-status-msg");
   const statusText = el("wa-status-text");
-  
+
   if (saveBtn) saveBtn.disabled = true;
 
   const toggle = el("wa-toggle-enabled");
@@ -665,6 +665,79 @@ async function loadConversations() {
   }
 }
 
+function showToast(message, type = "success") {
+  let container = el("crm-toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "crm-toast-container";
+    container.className = "crm-toast-container";
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement("div");
+  toast.className = `crm-toast crm-toast-${type}`;
+  const icon = type === "success" ? "✓" : "ℹ";
+  toast.innerHTML = `<span style="font-weight:700;">${icon}</span><span>${escapeHtml(message)}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add("fade-out");
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+
+async function handleBlockSender(convoId, email, btn) {
+  if (!email && !convoId) return;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span style="font-size:10px;">Blocage…</span>`;
+  }
+
+  try {
+    const res = await api("/api/senders/block", {
+      method: "POST",
+      body: JSON.stringify({
+        email: email,
+        conversation_id: convoId,
+        reason: "Bloqué depuis le manifest",
+      }),
+    });
+
+    if (btn) {
+      btn.className = "btn-block-sender blocked";
+      btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span>Bloqué ✓</span>`;
+    }
+
+    if (res.counts) {
+      state.counts = res.counts;
+      renderStatusNav();
+    }
+
+    showToast(`Expéditeur ${email} bloqué et déplacé dans Other`, "success");
+
+    // If we're in ALL or any view other than OTHER, filter out the blocked item immediately
+    if (state.status !== "OTHER") {
+      state.conversations = state.conversations.filter((c) => c.id !== convoId && c.client_email !== email);
+      renderConversations();
+      if (state.selectedId === convoId) {
+        state.selectedId = null;
+        state.selectedDetail = null;
+        if (el("detail-empty")) el("detail-empty").hidden = false;
+        if (el("detail-content")) el("detail-content").hidden = true;
+      }
+    } else {
+      const convo = state.conversations.find((c) => c.id === convoId);
+      if (convo) convo.status = "OTHER";
+    }
+  } catch (err) {
+    console.error("Failed to block sender:", err);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg><span>Bloquer cet expéditeur</span>`;
+    }
+    showToast(`Erreur lors du blocage: ${err.message || err}`, "error");
+  }
+}
+
 function renderConversations() {
   const list = el("conversation-list");
   const empty = el("list-empty");
@@ -682,7 +755,7 @@ function renderConversations() {
       ? `${c.origin} → ${c.destination}`
       : (c.origin || c.destination || "");
     return `
-      <button class="conversation-row ${selected}" data-id="${c.id}">
+      <div class="conversation-row ${selected}" data-id="${c.id}" role="button" tabindex="0">
         <span class="row-tag status-${c.status}"></span>
         <span class="row-body">
           <span class="row-top">
@@ -692,16 +765,39 @@ function renderConversations() {
           <span class="row-email">${escapeHtml(c.client_email)}</span>
           <span class="row-bottom">
             <span class="row-route ${route ? "" : "empty"}">${route ? escapeHtml(route) : "Route not set"}</span>
-            <span class="status-pill status-${c.status}">${c.status.replace("_", " ")}</span>
+            <div class="row-actions-group">
+              <button type="button" class="btn-block-sender" data-id="${c.id}" data-email="${escapeHtml(c.client_email)}" title="Bloquer cet expéditeur et l'ajouter à la blacklist">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+              </button>
+              <span class="status-pill status-${c.status}">${c.status.replace("_", " ")}</span>
+            </div>
           </span>
         </span>
-      </button>
+      </div>
     `;
   }).join("");
 
   list.querySelectorAll(".conversation-row").forEach((row) => {
-    row.addEventListener("click", () => {
+    row.addEventListener("click", (e) => {
+      if (e.target.closest(".btn-block-sender")) return;
       selectConversation(Number(row.dataset.id), true, true);
+    });
+    row.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        if (e.target.closest(".btn-block-sender")) return;
+        e.preventDefault();
+        selectConversation(Number(row.dataset.id), true, true);
+      }
+    });
+  });
+
+  list.querySelectorAll(".btn-block-sender").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const id = Number(btn.dataset.id);
+      const email = btn.dataset.email;
+      handleBlockSender(id, email, btn);
     });
   });
 }
@@ -726,7 +822,7 @@ function setConversationNotesRead(convoId) {
     const map = getNotesReadMap();
     map[convoId] = new Date().toISOString();
     localStorage.setItem(key, JSON.stringify(map));
-  } catch (e) {}
+  } catch (e) { }
 }
 
 function hasUnreadNotes(convoId, notes) {
@@ -822,9 +918,9 @@ function renderNotificationItems() {
       .slice(0, 2)
       .join("")
       .toUpperCase();
-    
+
     const clientName = escapeHtml(n.client_name || n.client_email?.split("@")[0] || `Reservation #${n.conversation_id}`);
-    const route = (n.origin && n.destination) 
+    const route = (n.origin && n.destination)
       ? `${escapeHtml(n.origin)} ➔ ${escapeHtml(n.destination)}`
       : (n.origin ? escapeHtml(n.origin) : (n.destination ? escapeHtml(n.destination) : ""));
 
@@ -1281,8 +1377,8 @@ function renderThread(messages, convo) {
       `;
     }
 
-    const ccPill = m.cc_addr 
-      ? `<span class="cc-badge-chip">CC: ${escapeHtml(m.cc_addr)}</span>` 
+    const ccPill = m.cc_addr
+      ? `<span class="cc-badge-chip">CC: ${escapeHtml(m.cc_addr)}</span>`
       : "";
 
     return `
@@ -1892,7 +1988,7 @@ function wireEvents() {
 
   async function doAddDispatcher() {
     const rawInput = newNumInput ? newNumInput.value.trim() : "";
-    const apikey  = newKeyInput  ? newKeyInput.value.trim()  : "";
+    const apikey = newKeyInput ? newKeyInput.value.trim() : "";
     if (!rawInput) return;
     if (!state.waSettings.dispatcher_numbers) state.waSettings.dispatcher_numbers = [];
 
@@ -2000,4 +2096,11 @@ function wireEvents() {
   if (authenticated) {
     await loadConversations();
   }
+
+  // Periodic auto-refresh every 15 seconds to display new incoming emails in real-time
+  setInterval(async () => {
+    if (state.user && state.view === "conversations") {
+      await loadConversations();
+    }
+  }, 15000);
 })();

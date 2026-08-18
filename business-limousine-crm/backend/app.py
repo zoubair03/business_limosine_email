@@ -533,6 +533,62 @@ def api_test_whatsapp_alert():
 
 
 # --------------------------------------------------------------------------
+# Sender Filtering (Blocked & Allowed Senders)
+# --------------------------------------------------------------------------
+
+@app.get("/api/senders/blocked")
+@login_required
+def api_list_blocked_senders():
+    with db_session() as conn:
+        rows = models.list_blocked_senders(conn)
+        return jsonify({"blocked": [dict(r) for r in rows]})
+
+
+@app.post("/api/senders/block")
+@login_required
+def api_block_sender():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    pattern = (data.get("pattern") or email).strip().lower()
+    reason = (data.get("reason") or "Bloqué depuis le manifest").strip()
+    convo_id = data.get("conversation_id")
+
+    if not pattern:
+        return jsonify({"error": "Pattern or email is required"}), 400
+
+    with db_session() as conn:
+        models.add_blocked_sender(conn, pattern, reason=reason)
+        # Reclassify affected conversations to OTHER so they leave ALL conversations immediately
+        if email:
+            conn.execute(
+                "UPDATE conversations SET status = 'OTHER', updated_at = ? WHERE lower(client_email) = ? AND status != 'OTHER'",
+                (models._now(), email),
+            )
+        elif convo_id:
+            conn.execute(
+                "UPDATE conversations SET status = 'OTHER', updated_at = ? WHERE id = ? AND status != 'OTHER'",
+                (models._now(), convo_id),
+            )
+        counts = models.status_counts(conn)
+
+    return jsonify({
+        "success": True,
+        "pattern": pattern,
+        "counts": counts,
+        "message": f"Expéditeur '{pattern}' bloqué avec succès.",
+    })
+
+
+@app.delete("/api/senders/blocked/<int:blocked_id>")
+@login_required
+def api_delete_blocked_sender(blocked_id):
+    with db_session() as conn:
+        models.delete_blocked_sender(conn, blocked_id)
+        counts = models.status_counts(conn)
+    return jsonify({"success": True, "counts": counts})
+
+
+# --------------------------------------------------------------------------
 # Manual sync trigger
 # --------------------------------------------------------------------------
 
