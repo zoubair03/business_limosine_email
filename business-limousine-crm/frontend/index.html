@@ -25,15 +25,28 @@
     <nav class="status-nav" id="status-nav">
       <!-- populated by app.js -->
     </nav>
-
-    <div class="sidebar-section-heading">Automation</div>
+    <div class="sidebar-section-heading">Settings & Automation</div>
     <nav class="system-nav">
+      <button class="status-nav-item" id="nav-email-settings-btn" data-view="email-settings">
+        <span class="label">
+          <span class="dot" style="background: var(--brass);"></span>
+          Email & Signature
+        </span>
+      </button>
       <button class="status-nav-item" id="nav-whatsapp-btn" data-view="whatsapp-settings">
         <span class="label">
           <span class="dot dot-wa"></span>
           Telegram Alerts
         </span>
         <span class="nav-badge-pill" id="wa-active-pill">ACTIVE</span>
+      </button>
+
+      <button class="status-nav-item" id="nav-users-settings" data-view="users-settings" style="display: none;">
+        <span class="nav-item-left">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          <span>Team & Users</span>
+        </span>
+        <span class="nav-badge-pill" style="background: rgba(197, 160, 89, 0.2); color: var(--brass-light); font-size: 9px; padding: 2px 5px; font-weight: 700;">ADMIN</span>
       </button>
     </nav>
 
@@ -53,10 +66,11 @@
         <span class="sync-dot"></span>
         <span id="sync-label">Sync inbox</span>
       </button>
-      <div id="sync-meta" class="sync-meta">Not synced yet</div>
+      <span class="sync-meta mono" id="sync-meta">Not synced yet</span>
     </div>
   </aside>
 
+  <!-- Main Content Panel -->
   <main class="main">
     <header class="topbar">
       <div class="topbar-title">
@@ -104,6 +118,124 @@
         </div>
       </div>
     </header>
+
+    <!-- Email & Signature Settings View -->
+    <section class="settings-view" id="email-settings-view" hidden>
+      <div class="settings-container">
+        
+        <div class="settings-header-banner">
+          <div>
+            <h2 class="settings-title">Email Signature & Identity Settings</h2>
+            <p class="settings-subtitle">Customize the default multilingual signature, HTML branding, dispatcher contact info, and default CC recipients.</p>
+          </div>
+          <div class="twilio-badge" style="background: rgba(197, 160, 89, 0.15); border-color: rgba(197, 160, 89, 0.35); color: var(--brass-light);">
+            <span class="status-indicator-dot" style="background: var(--brass);"></span>
+            <span>Official Identity Active</span>
+          </div>
+        </div>
+
+        <div class="settings-grid">
+          
+          <!-- Left Column: Dispatcher Profile & Signature Code -->
+          <div class="settings-col">
+            
+            <!-- Dispatcher Contact Info -->
+            <div class="settings-card">
+              <div class="settings-card-head">
+                <div>
+                  <div class="settings-card-title">Dispatcher Profile & Default CC</div>
+                  <div class="settings-card-desc">Information inserted automatically into quote offers and email headers.</div>
+                </div>
+              </div>
+              <div class="settings-divider"></div>
+              
+              <div class="settings-fields-grid">
+                <div class="settings-field-group">
+                  <label class="field-label" for="setting-dispatcher-name">Dispatcher Name</label>
+                  <input type="text" id="setting-dispatcher-name" class="settings-input" placeholder="e.g. Lasaad" value="Lasaad" />
+                </div>
+                <div class="settings-field-group">
+                  <label class="field-label" for="setting-dispatcher-phone">Direct Phone Number</label>
+                  <input type="text" id="setting-dispatcher-phone" class="settings-input" placeholder="e.g. +32 487 44 67 73" value="+32 487 44 67 73" />
+                </div>
+              </div>
+
+              <div class="settings-field-group">
+                <label class="field-label" for="setting-default-cc">Default CC Address(es)</label>
+                <input type="text" id="setting-default-cc" class="settings-input" placeholder="info@business-limousine.be, additional@company.com" value="info@business-limousine.be" />
+                <div class="field-hint">💡 Pre-filled in every reply automatically. Separate multiple addresses with commas.</div>
+              </div>
+            </div>
+
+            <!-- Signature Editor Card -->
+            <div class="settings-card">
+              <div class="settings-card-head">
+                <div>
+                  <div class="settings-card-title">Email Signature Editor</div>
+                  <div class="settings-card-desc">Edit your plain text and rich HTML email signatures.</div>
+                </div>
+                <button type="button" class="btn-secondary" id="btn-reset-signature" title="Reset to official Business Limousine signature" style="font-size: 11.5px; padding: 5px 10px;">
+                  ↺ Reset Official Default
+                </button>
+              </div>
+              
+              <div class="sig-tabs-row">
+                <button type="button" class="sig-tab-btn active" data-sigtab="text" id="sigtab-btn-text">Plain Text Signature</button>
+                <button type="button" class="sig-tab-btn" data-sigtab="html" id="sigtab-btn-html">&lt;/&gt; HTML Signature</button>
+              </div>
+
+              <div id="sigtab-panel-text" class="sig-tab-panel">
+                <textarea id="setting-signature-text" rows="8" class="settings-textarea" placeholder="Plain text signature…"></textarea>
+              </div>
+
+              <div id="sigtab-panel-html" class="sig-tab-panel" hidden>
+                <textarea id="setting-signature-html" rows="10" class="settings-textarea mono" placeholder="<div style='...'>...</div>"></textarea>
+              </div>
+
+              <div style="margin-top: 14px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" class="btn-primary" id="btn-save-email-settings">
+                  <span id="save-email-settings-btn-text">💾 Save Email Settings</span>
+                </button>
+              </div>
+              <div class="test-feedback" id="email-settings-feedback" hidden></div>
+            </div>
+
+          </div>
+
+          <!-- Right Column: Live Email Signature Preview -->
+          <div class="settings-col">
+            
+            <div class="settings-card">
+              <div class="settings-card-head">
+                <div>
+                  <div class="settings-card-title">📱 Live Signature Rendering Preview</div>
+                  <div class="settings-card-desc">How your signature appears to clients in Outlook, Apple Mail & Gmail.</div>
+                </div>
+              </div>
+              <div class="settings-divider"></div>
+
+              <div class="sig-preview-window">
+                <div class="sig-preview-email-mockup">
+                  <div class="sig-preview-mock-message">
+                    <span style="color: #64748B;">Bonjour X,</span><br><br>
+                    <span style="color: #334155;">Nous avons le plaisir de vous proposer un véhicule VIP Mercedes pour votre trajet. Ce tarif est proposé pour le transport selon les informations communiquées.</span>
+                  </div>
+                  
+                  <div class="sig-preview-divider"></div>
+
+                  <!-- Live Rendered Container -->
+                  <div class="sig-preview-render-area" id="sig-preview-render-area">
+                    <!-- Dynamic live preview updated in realtime -->
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </section>
 
     <!-- Dispatch Alerts Operations Cockpit -->
     <section class="settings-view" id="whatsapp-settings-view" hidden>
@@ -263,6 +395,51 @@
       </div>
     </section>
 
+    <!-- Team & User Management View -->
+    <section class="settings-view" id="users-settings-view" hidden>
+      <div class="settings-container">
+        
+        <div class="settings-header-banner">
+          <div>
+            <h2 class="settings-title">Team & User Management</h2>
+            <p class="settings-subtitle">Manage dispatcher accounts, driver credentials, access roles, and permissions.</p>
+          </div>
+          <div>
+            <button type="button" class="btn-primary" id="btn-open-add-user-modal">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>Add New User</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-card" style="padding: 0; overflow: hidden;">
+          <div class="users-table-header-toolbar">
+            <div class="users-table-title">System Users & Dispatchers (<span id="users-total-count">0</span>)</div>
+            <input type="text" id="users-search-input" class="settings-input users-search-box" placeholder="Filter by name, email, or role…" />
+          </div>
+
+          <div class="users-table-wrapper">
+            <table class="users-data-table">
+              <thead>
+                <tr>
+                  <th>USER / DISPATCHER</th>
+                  <th>EMAIL ADDRESS</th>
+                  <th>ROLE</th>
+                  <th>STATUS</th>
+                  <th>CREATED</th>
+                  <th style="text-align: right;">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody id="users-table-body">
+                <!-- Dynamically rendered user rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
     <div class="content" id="conversations-content">
       <section class="list-panel" id="list-panel">
         <div id="conversation-list" class="conversation-list"></div>
@@ -327,9 +504,9 @@
                 <span class="thread-msg-count-pill" id="thread-msg-count-pill">0 emails</span>
               </div>
               <div class="thread-toolbar-right">
-                <button class="thread-tool-btn" id="thread-jump-reply-btn" title="Jump to Reply">
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
-                  <span>Reply</span>
+                <button class="thread-tool-btn" id="thread-jump-reply-btn" title="Reply All (Outlook-style)">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 17 2 12 7 7"></polyline><polyline points="12 17 7 12 12 7"></polyline><path d="M22 18v-2a4 4 0 0 0-4-4H7"></path></svg>
+                  <span>Reply All</span>
                 </button>
               </div>
             </div>
@@ -348,7 +525,7 @@
                   <div class="composer-quick-templates">
                     <select id="composer-template-select" class="template-select">
                       <option value="">⚡ Quick Response Templates…</option>
-                      <option value="quote_confirmation">📋 Quote Confirmation & Pricing</option>
+                      <option value="quote_confirmation">📋 Offre & Devis Officiel (Mercedes)</option>
                       <option value="chauffeur_assigned">🚘 Chauffeur & Vehicle Assigned</option>
                       <option value="flight_delay">✈️ Flight Delay Tracking</option>
                       <option value="booking_confirmed">✅ VIP Booking Confirmed</option>
@@ -361,12 +538,11 @@
                   <div class="composer-field-row">
                     <span class="field-tag">To:</span>
                     <input id="reply-to" type="email" placeholder="Recipient email" class="composer-input" />
-                    <button type="button" class="btn-cc-toggle" id="btn-toggle-cc">+ Add CC</button>
                   </div>
 
-                  <div class="composer-field-row" id="cc-field-row" hidden>
+                  <div class="composer-field-row" id="cc-field-row">
                     <span class="field-tag">Cc:</span>
-                    <input id="reply-cc" type="text" placeholder="cc1@company.com, cc2@company.com" class="composer-input" />
+                    <input id="reply-cc" type="text" value="info@business-limousine.be" placeholder="info@business-limousine.be, additional@company.com" class="composer-input" />
                   </div>
 
                   <div class="composer-field-row">
@@ -376,16 +552,62 @@
                 </div>
               </div>
 
-              <!-- Rich Text Formatting Bar -->
+              <!-- Rich Text Formatting & AI Bar -->
               <div class="composer-toolbar">
-                <div class="formatting-btn-group">
-                  <button type="button" class="format-btn" data-format="bold" title="Bold (Ctrl+B)"><b>B</b></button>
-                  <button type="button" class="format-btn" data-format="italic" title="Italic (Ctrl+I)"><i>I</i></button>
-                  <button type="button" class="format-btn" data-format="bullet" title="Bullet List">• List</button>
-                  <button type="button" class="format-btn" data-format="quote" title="Quote Block">“ ” Quote</button>
+                <div class="composer-toolbar-left-group">
+                  <button type="button" class="btn-ai-smart-draft" id="btn-toggle-ai-draft" title="Generate AI reply with Gemini">
+                    <span class="ai-sparkle-icon">✨</span>
+                    <span>AI Smart Draft</span>
+                  </button>
+
+                  <div class="formatting-btn-group">
+                    <button type="button" class="format-btn" data-format="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+                    <button type="button" class="format-btn" data-format="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+                    <button type="button" class="format-btn" data-format="bullet" title="Bullet List">• List</button>
+                    <button type="button" class="format-btn" data-format="quote" title="Quote Block">“ ” Quote</button>
+                  </div>
                 </div>
                 <div class="composer-toolbar-right-hint">
                   <span class="shortcut-hint">Press <b>Ctrl + Enter</b> to send</span>
+                </div>
+              </div>
+
+              <!-- AI Smart Reply Assistant Drawer -->
+              <div class="ai-draft-drawer" id="ai-draft-drawer" hidden>
+                <div class="ai-drawer-head">
+                  <div class="ai-drawer-title">
+                    <span class="ai-badge">GEMINI AI ASSISTANT</span>
+                    <span class="ai-lang-pill" id="ai-lang-pill">Auto-Language</span>
+                  </div>
+                  <button type="button" class="ai-drawer-close-btn" id="ai-drawer-close-btn" title="Close AI Assistant">✕</button>
+                </div>
+
+                <!-- AI Quick Tone Selectors & Custom Prompt -->
+                <div class="ai-drawer-controls">
+                  <div class="ai-tone-pills">
+                    <button type="button" class="ai-tone-btn active" data-tone="quote" id="ai-tone-quote">💎 Luxury Quote</button>
+                    <button type="button" class="ai-tone-btn" data-tone="confirm" id="ai-tone-confirm">✅ VIP Confirmation</button>
+                    <button type="button" class="ai-tone-btn" data-tone="details" id="ai-tone-details">❓ Request Details</button>
+                  </div>
+                  <div class="ai-custom-prompt-row">
+                    <input type="text" id="ai-custom-instructions" class="ai-prompt-input" placeholder="Optional custom instructions (e.g. 'Propose 190€ for S-Class', 'Ask for flight number')…" />
+                    <button type="button" class="btn-ai-generate-action" id="btn-ai-generate-action">
+                      <span id="ai-generate-btn-text">Generate</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- AI Draft Preview Container -->
+                <div class="ai-draft-preview-container" id="ai-draft-preview-container">
+                  <div class="ai-draft-content-box" id="ai-draft-content-box">
+                    <div class="ai-draft-subject-line" id="ai-draft-subject-line">Subject: ...</div>
+                    <div class="ai-draft-body-preview" id="ai-draft-body-preview">Click a tone above or hit Generate to create an AI executive reply…</div>
+                  </div>
+                  <div class="ai-draft-actions-row">
+                    <button type="button" class="btn-ai-apply" id="btn-ai-apply">
+                      <span>✨ Insert into Reply Body</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -397,6 +619,20 @@
                     <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                     <span>Drop files or images to attach</span>
                   </div>
+                </div>
+              </div>
+
+              <!-- Dynamic Live HTML Signature Card in Composer -->
+              <div class="composer-signature-badge-card" id="composer-signature-badge-card">
+                <div class="composer-signature-badge-head">
+                  <div class="composer-signature-badge-title">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                    <span>Rich HTML Signature (Appended automatically on send)</span>
+                  </div>
+                  <button type="button" class="composer-signature-edit-btn" id="composer-edit-signature-btn">⚙️ Edit in Settings</button>
+                </div>
+                <div class="composer-signature-html-render" id="composer-signature-html-render">
+                  <!-- Rendered live HTML signature -->
                 </div>
               </div>
 
@@ -464,31 +700,96 @@
 
     <form id="login-form" class="auth-form" autocomplete="on">
       <div class="form-group">
-        <label for="login-email">Email Address</label>
-        <input type="email" id="login-email" placeholder="admin@businesslimousine.com" required autofocus autocomplete="email" />
+        <label for="login-email">Work Email Address</label>
+        <input type="email" id="login-email" placeholder="name@business-limousine.be" required autofocus autocomplete="email" />
       </div>
       <div class="form-group">
         <label for="login-password">Password</label>
-        <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password" />
+        <div class="password-input-wrap">
+          <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password" />
+          <button type="button" class="btn-toggle-pw" id="login-pw-toggle" title="Show/Hide password" tabindex="-1">👁</button>
+        </div>
       </div>
       <button type="submit" id="login-submit-btn" class="btn-login">
         <span>Sign In to Console</span>
       </button>
     </form>
-
-    <div class="auth-demo-hints">
-      <div class="demo-title">Staff Accounts:</div>
-      <div class="demo-account" id="demo-admin-btn">
-        <span class="demo-role admin">ADMIN</span> admin@businesslimousine.com / admin123
-      </div>
-      <div class="demo-account" id="demo-iheb-btn">
-        <span class="demo-role dispatcher">DISPATCH</span> iheb@businesslimousine.com / dispatch123
-      </div>
-      <div class="demo-account" id="demo-zoubair-btn">
-        <span class="demo-role dispatcher">DISPATCH</span> zoubair@businesslimousine.com / dispatch123
-      </div>
+    
+    <div class="auth-footer-notice">
+      🔒 Secure SSL / Encrypted Chauffeur Dispatch System
     </div>
   </div>
+</div>
+
+<!-- Add / Edit User Modal -->
+<div id="user-modal" class="lightbox-modal" hidden>
+  <div class="lightbox-backdrop" id="user-modal-backdrop"></div>
+  <div class="user-modal-card">
+    <div class="user-modal-head">
+      <div>
+        <div class="user-modal-title" id="user-modal-title">Add New Team Member</div>
+        <div class="user-modal-subtitle">Configure credentials and dispatch authorization level.</div>
+      </div>
+      <button type="button" class="user-modal-close-btn" id="user-modal-close-btn">✕</button>
+    </div>
+    
+    <form id="user-edit-form" class="user-modal-form">
+      <input type="hidden" id="user-form-id" value="" />
+      
+      <div id="user-modal-feedback" class="test-feedback" hidden></div>
+
+      <div class="form-group">
+        <label class="field-label" for="user-form-fullname">Full Name *</label>
+        <input type="text" id="user-form-fullname" class="settings-input" placeholder="e.g. Jean Dupont" required />
+      </div>
+
+      <div class="form-group">
+        <label class="field-label" for="user-form-email">Work Email Address *</label>
+        <input type="email" id="user-form-email" class="settings-input" placeholder="e.g. jean@business-limousine.be" required />
+      </div>
+
+      <div class="settings-fields-grid" style="margin-bottom: 0;">
+        <div class="form-group">
+          <label class="field-label" for="user-form-role">Role & Access Level *</label>
+          <select id="user-form-role" class="settings-input">
+            <option value="DISPATCHER">Dispatcher (Reservations & Emails)</option>
+            <option value="ADMIN">Administrator (Full Access & Settings)</option>
+            <option value="DRIVER">Driver (Trip Tracking & Notes)</option>
+            <option value="ACCOUNTANT">Accountant (Invoices & Billing)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="field-label" for="user-form-avatar-color">Avatar Badge Color</label>
+          <select id="user-form-avatar-color" class="settings-input">
+            <option value="#C5A059">Gold (#C5A059)</option>
+            <option value="#3B82F6">Royal Blue (#3B82F6)</option>
+            <option value="#10B981">Emerald Green (#10B981)</option>
+            <option value="#8B5CF6">Purple (#8B5CF6)</option>
+            <option value="#F59E0B">Amber (#F59E0B)</option>
+            <option value="#EC4899">Rose (#EC4899)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="field-label" for="user-form-password" id="user-form-password-label">Password *</label>
+        <div class="password-input-wrap">
+          <input type="password" id="user-form-password" class="settings-input" placeholder="Minimum 6 characters" required autocomplete="new-password" />
+          <button type="button" class="btn-toggle-pw" id="user-form-pw-toggle" title="Show/Hide Password" tabindex="-1">👁</button>
+        </div>
+        <div class="field-hint" id="user-form-password-hint" style="display: none;">Leave blank to keep existing password unchanged.</div>
+      </div>
+
+      <div class="user-modal-actions">
+        <button type="button" class="btn-modal-cancel" id="user-modal-cancel-btn">Cancel</button>
+        <button type="submit" class="btn-primary" id="user-modal-save-btn">
+          <span id="user-modal-save-btn-text">Save User Account</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Lightbox Image Preview Modal -->
 <div id="lightbox-modal" class="lightbox-modal" hidden>
   <div class="lightbox-backdrop" id="lightbox-backdrop"></div>

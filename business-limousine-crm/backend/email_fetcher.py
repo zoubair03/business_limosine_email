@@ -34,24 +34,33 @@ def connect():
     return conn
 
 
-def _fetch_new_uids(imap_conn, last_uid, initial_limit=None):
-    limit = initial_limit or Config.INITIAL_SYNC_LIMIT
-    if last_uid:
-        criteria = f"{int(last_uid) + 1}:*"
-    else:
-        criteria = "1:*"
-    status, data = imap_conn.uid("search", None, criteria)
+def _fetch_new_uids(imap_conn, last_uid, initial_limit=None, deep_limit=None):
+    status, data = imap_conn.uid("search", None, "ALL")
     if status != "OK" or not data or not data[0]:
         return []
-    uids = [uid for uid in data[0].split() if not last_uid or int(uid) > int(last_uid)]
-    if not last_uid and len(uids) > limit:
+
+    raw_uids = data[0].split()
+    all_uids = sorted([int(u) for u in raw_uids if u.isdigit()])
+    if not all_uids:
+        return []
+
+    if deep_limit and deep_limit > 0:
+        target_uids = all_uids[-deep_limit:]
+        return [str(u) for u in target_uids]
+
+    if last_uid:
+        last_int = int(last_uid)
+        new_uids = [u for u in all_uids if u > last_int]
+        return [str(u) for u in new_uids]
+    else:
+        limit = initial_limit or Config.INITIAL_SYNC_LIMIT
+        target_uids = all_uids[-limit:] if len(all_uids) > limit else all_uids
         logger.info(
             "Initial sync on mailbox (%d total messages found). Processing the latest %d messages.",
-            len(uids),
-            limit,
+            len(all_uids),
+            len(target_uids),
         )
-        uids = uids[-limit:]
-    return uids
+        return [str(u) for u in target_uids]
 
 
 def _is_outbound_sender(from_addr):
@@ -134,7 +143,7 @@ def _store_message(db_conn, parsed, ai_result=None):
     return conversation_id
 
 
-def run_once():
+def run_once(deep_limit=None):
     """Fetch and process all mail received since the last run. Returns count processed."""
     if not _sync_lock.acquire(blocking=False):
         logger.info("A sync cycle is already in progress, skipping concurrent run.")
@@ -147,64 +156,67 @@ def run_once():
             with db_session() as db_conn:
                 last_uid = models.get_sync_state(db_conn, SYNC_STATE_KEY)
 
-            uids = _fetch_new_uids(imap_conn, last_uid)
+            uids = _fetch_new_uids(imap_conn, last_uid, deep_limit=deep_limit)
             highest_uid = int(last_uid) if last_uid else 0
 
             for uid in uids:
-                status, msg_data = imap_conn.uid("fetch", uid, "(RFC822)")
-                if status != "OK" or not msg_data or msg_data[0] is None:
-                    continue
-                raw_bytes = msg_data[0][1]
-
                 try:
-                    parsed = parse_raw_email(raw_bytes)
-                except Exception as exc:
-                    logger.error("Failed to parse message UID %s: %s", uid, exc)
-                    continue
+                    status, msg_data = imap_conn.uid("fetch", str(uid), "(RFC822)")
+                    if status != "OK" or not msg_data or msg_data[0] is None or not isinstance(msg_data[0], tuple):
+                        continue
+                    raw_bytes = msg_data[0][1]
 
-                with db_session() as db_conn:
-                    if parsed.get("message_id") and models.message_exists(db_conn, parsed["message_id"]):
-                        highest_uid = max(highest_uid, int(uid))
+                    try:
+                        parsed = parse_raw_email(raw_bytes)
+                    except Exception as exc:
+                        logger.error("Failed to parse message UID %s: %s", uid, exc)
                         continue
 
-                    is_outbound = _is_outbound_sender(parsed.get("from_addr"))
-                    was_filtered = False
-                    if is_outbound:
-                        ai_result = {"category": "DISCUSSION", "confidence": 1.0}
-                    else:
-                        ai_result = pre_filter(
-                            db_conn,
-                            from_addr=parsed["from_addr"],
-                            subject=parsed["subject"],
-                            body_text=parsed["body_text"],
-                        )
-                        if ai_result is not None:
-                            was_filtered = True
+                    with db_session() as db_conn:
+                        if parsed.get("message_id") and models.message_exists(db_conn, parsed["message_id"]):
+                            highest_uid = max(highest_uid, int(uid))
+                            continue
+
+                        is_outbound = _is_outbound_sender(parsed.get("from_addr"))
+                        was_filtered = False
+                        if is_outbound:
+                            ai_result = {"category": "DISCUSSION", "confidence": 1.0}
                         else:
-                            ai_result = classify_email(
-                                subject=parsed["subject"],
-                                body=parsed["body_text"],
-                                from_name=parsed["from_name"],
+                            ai_result = pre_filter(
+                                db_conn,
                                 from_addr=parsed["from_addr"],
+                                subject=parsed["subject"],
+                                body_text=parsed["body_text"],
                             )
-                        # Form-field regex extraction fills any gaps the AI left blank.
-                        # Skipped for pre-filtered mail: it was already deemed noise,
-                        # no point spending cycles extracting trip details from it.
-                        if not was_filtered:
-                            form_fields = extract_form_fields(parsed["body_text"])
-                            for key in ("client_name", "client_phone", "trip_date", "origin", "destination"):
-                                form_key = {"client_name": "name", "client_phone": "phone"}.get(key, key)
-                                if not ai_result.get(key) and form_fields.get(form_key):
-                                    ai_result[key] = form_fields[form_key]
-                            if not ai_result.get("client_email") and form_fields.get("email"):
-                                ai_result["client_email"] = form_fields["email"]
+                            if ai_result is not None:
+                                was_filtered = True
+                            else:
+                                ai_result = classify_email(
+                                    subject=parsed["subject"],
+                                    body=parsed["body_text"],
+                                    from_name=parsed["from_name"],
+                                    from_addr=parsed["from_addr"],
+                                )
+                            # Form-field regex extraction fills any gaps the AI left blank.
+                            # Skipped for pre-filtered mail: it was already deemed noise.
+                            if not was_filtered:
+                                form_fields = extract_form_fields(parsed["body_text"])
+                                for key in ("client_name", "client_phone", "trip_date", "origin", "destination"):
+                                    form_key = {"client_name": "name", "client_phone": "phone"}.get(key, key)
+                                    if not ai_result.get(key) and form_fields.get(form_key):
+                                        ai_result[key] = form_fields[form_key]
+                                if not ai_result.get("client_email") and form_fields.get("email"):
+                                    ai_result["client_email"] = form_fields["email"]
 
-                    _store_message(db_conn, parsed, ai_result)
-                    processed += 1
+                        _store_message(db_conn, parsed, ai_result)
+                        processed += 1
 
-                highest_uid = max(highest_uid, int(uid))
-                if not is_outbound and not was_filtered:
-                    time.sleep(0.5)  # Smooth pacing to respect Gemini API rate limits
+                    highest_uid = max(highest_uid, int(uid))
+                    if not is_outbound and not was_filtered:
+                        time.sleep(0.3)  # Smooth pacing to respect Gemini API rate limits
+                except Exception as loop_err:
+                    logger.error("Error processing UID %s: %s", uid, loop_err)
+                    continue
 
             with db_session() as db_conn:
                 models.set_sync_state(db_conn, SYNC_STATE_KEY, highest_uid)

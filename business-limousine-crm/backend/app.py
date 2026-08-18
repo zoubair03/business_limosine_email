@@ -5,6 +5,7 @@ frontend (frontend/index.html, styles.css, app.js).
 Run with:  python app.py
 """
 from datetime import timedelta
+import html
 import json
 import logging
 import mimetypes
@@ -225,6 +226,78 @@ def api_create_user():
         return jsonify({"id": uid, "email": email, "full_name": full_name, "role": role}), 201
 
 
+@app.patch("/api/users/<int:user_id>")
+@roles_required("ADMIN")
+def api_update_user(user_id):
+    data = request.get_json(silent=True) or {}
+    full_name = data.get("full_name")
+    role = data.get("role")
+    avatar_color = data.get("avatar_color")
+    is_active = data.get("is_active")
+    new_password = data.get("password")
+
+    current_user = get_current_user()
+
+    with db_session() as conn:
+        target = models.get_user_by_id(conn, user_id)
+        if not target:
+            return jsonify({"error": "User not found"}), 404
+
+        fields = {}
+        if full_name is not None:
+            fields["full_name"] = full_name.strip()
+        if role is not None:
+            role = role.upper().strip()
+            if role not in models.ALL_ROLES:
+                return jsonify({"error": f"Role must be one of {models.ALL_ROLES}"}), 400
+            if current_user and current_user["id"] == user_id and role != "ADMIN":
+                admin_count = conn.execute("SELECT COUNT(*) AS n FROM users WHERE role = 'ADMIN' AND is_active = 1").fetchone()["n"]
+                if admin_count <= 1:
+                    return jsonify({"error": "Cannot demote the only active Administrator"}), 400
+            fields["role"] = role
+        if avatar_color is not None:
+            fields["avatar_color"] = avatar_color
+        if is_active is not None:
+            if current_user and current_user["id"] == user_id and not bool(is_active):
+                return jsonify({"error": "Cannot deactivate your own account"}), 400
+            fields["is_active"] = int(bool(is_active))
+        if new_password:
+            fields["password_hash"] = hash_password(new_password)
+
+        models.update_user(conn, user_id, **fields)
+        updated = models.get_user_by_id(conn, user_id)
+        return jsonify({
+            "user": {
+                "id": updated["id"],
+                "email": updated["email"],
+                "full_name": updated["full_name"],
+                "role": updated["role"],
+                "avatar_color": updated["avatar_color"],
+                "is_active": bool(updated["is_active"]),
+            }
+        })
+
+
+@app.delete("/api/users/<int:user_id>")
+@roles_required("ADMIN")
+def api_delete_user(user_id):
+    current_user = get_current_user()
+    if current_user and current_user["id"] == user_id:
+        return jsonify({"error": "Cannot delete your own account"}), 400
+
+    with db_session() as conn:
+        target = models.get_user_by_id(conn, user_id)
+        if not target:
+            return jsonify({"error": "User not found"}), 404
+        if target["role"] == "ADMIN":
+            admin_count = conn.execute("SELECT COUNT(*) AS n FROM users WHERE role = 'ADMIN'").fetchone()["n"]
+            if admin_count <= 1:
+                return jsonify({"error": "Cannot delete the last Administrator"}), 400
+
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        return jsonify({"success": True, "message": f"User {target['email']} deleted successfully"})
+
+
 # --------------------------------------------------------------------------
 # Conversations
 # --------------------------------------------------------------------------
@@ -241,6 +314,26 @@ def api_list_conversations():
         "conversations": [row_to_conversation(r) for r in rows],
         "counts": counts,
     })
+
+
+@app.post("/api/sync")
+@login_required
+def api_trigger_sync():
+    data = request.get_json(silent=True) or {}
+    deep_limit = data.get("deep_limit")
+    if deep_limit:
+        try:
+            deep_limit = int(deep_limit)
+        except Exception:
+            deep_limit = None
+
+    import email_fetcher
+    try:
+        count = email_fetcher.run_once(deep_limit=deep_limit)
+        return jsonify({"success": True, "count": count})
+    except Exception as exc:
+        logger.error("Manual sync failed: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
 
 
 @app.get("/api/conversations/<int:conversation_id>")
@@ -332,18 +425,98 @@ def api_add_note(conversation_id):
 # Reply
 # --------------------------------------------------------------------------
 
+def clean_message_body(raw_text):
+    if not raw_text:
+        return ""
+    text = raw_text.strip()
+
+    markers = [
+        "Kind regards",
+        "Met vriendelijke groet",
+        "مع أطيب التحيات",
+        "уважением",
+        "Business Limousine Services",
+        "Business Limousine",
+        "Phone:",
+        "Groundtransportation",
+    ]
+
+    lowest_idx = -1
+    for marker in markers:
+        idx = text.find(marker)
+        if idx != -1:
+            if lowest_idx == -1 or idx < lowest_idx:
+                lowest_idx = idx
+
+    if lowest_idx != -1:
+        before = text[:lowest_idx].rstrip()
+        lines = before.split("\n")
+        while lines and (lines[-1].strip().lower() in [
+            "lasaad", "zoubair", "admin", "administrator", "dispatch",
+            "operations", "team", "warm regards", "best regards",
+            "sincerely", "cordialement", "salutations", ""
+        ]):
+            lines.pop()
+        text = "\n".join(lines).rstrip()
+
+    return text
+
+
+def build_rich_email_html(raw_body_text, signature_html=None):
+    cleaned_text = clean_message_body(raw_body_text)
+
+    paragraphs = []
+    for block in cleaned_text.split("\n\n"):
+        block = block.strip()
+        if not block:
+            continue
+        lines = block.split("\n")
+        if any(l.strip().startswith(("•", "-", "*")) for l in lines):
+            list_items = []
+            for l in lines:
+                l_str = l.strip()
+                if l_str.startswith(("•", "-", "*")):
+                    content = l_str.lstrip("•-* ").strip()
+                    list_items.append(f"<li style='margin-bottom: 6px;'>{html.escape(content)}</li>")
+                else:
+                    list_items.append(f"<div style='margin-bottom: 5px;'>{html.escape(l_str)}</div>")
+            paragraphs.append(f"<ul style='margin: 8px 0 14px 20px; padding: 0; list-style-type: disc; color: #1E293B;'>{''.join(list_items)}</ul>")
+        else:
+            escaped = "<br>".join(html.escape(l) for l in lines)
+            paragraphs.append(f"<p style='margin: 0 0 14px; line-height: 1.65; color: #1E293B; font-size: 14px;'>{escaped}</p>")
+
+    message_html = "\n".join(paragraphs) if paragraphs else ""
+    sig = signature_html or DEFAULT_OFFICIAL_SIGNATURE_HTML
+
+    full_html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #ffffff; color: #1E293B;">
+  <div style="max-width: 680px; padding: 16px 20px; font-size: 14px; line-height: 1.6;">
+    {message_html}
+    <div style="margin-top: 24px; padding-top: 12px;">
+      {sig}
+    </div>
+  </div>
+</body>
+</html>"""
+    return full_html
+
+
 @app.post("/api/conversations/<int:conversation_id>/reply")
 @login_required
 def api_reply(conversation_id):
     data = request.get_json(force=True) or {}
     subject = (data.get("subject") or "").strip()
     body_text = (data.get("body_text") or "").strip()
-    body_html = data.get("body_html")
     to_addr = (data.get("to_addr") or "").strip()
     cc_addr = data.get("cc_addr")
     attachments = data.get("attachments") or []
 
-    if not body_text and not body_html and not attachments:
+    if not body_text and not attachments:
         return jsonify({"error": "Message body or attachment is required"}), 400
 
     current_user = get_current_user()
@@ -354,18 +527,22 @@ def api_reply(conversation_id):
         if not convo:
             return jsonify({"error": "not found"}), 404
         last_inbound = models.get_last_inbound_message(conn, conversation_id)
+        stored_sig_html = models.get_setting(conn, "email_signature_html") or DEFAULT_OFFICIAL_SIGNATURE_HTML
 
     recipient = to_addr or convo["client_email"]
     in_reply_to = last_inbound["message_id"] if last_inbound else None
     subject = subject or f"Re: {(last_inbound['subject'] if last_inbound else 'Your inquiry')}"
 
+    cleaned_user_text = clean_message_body(body_text)
+    formatted_html = build_rich_email_html(cleaned_user_text, stored_sig_html)
+
     try:
         new_message_id = send_reply(
             to_addr=recipient,
             subject=subject,
-            body_text=body_text,
+            body_text=cleaned_user_text,
             cc_addr=cc_addr,
-            body_html=body_html,
+            body_html=formatted_html,
             attachments=attachments,
             in_reply_to_message_id=in_reply_to,
         )
@@ -379,8 +556,8 @@ def api_reply(conversation_id):
             conversation_id=conversation_id,
             direction="outbound",
             subject=subject,
-            body_text=body_text,
-            body_html=body_html,
+            body_text=cleaned_user_text,
+            body_html=formatted_html,
             from_addr=Config.SMTP_USER,
             to_addr=recipient,
             cc_addr=cc_addr if isinstance(cc_addr, str) else (", ".join(cc_addr) if cc_addr else None),
@@ -398,8 +575,111 @@ def api_reply(conversation_id):
 
     return jsonify({"messages": [row_to_message(m) for m in messages]})
 
+
 # --------------------------------------------------------------------------
-# WhatsApp Dispatch Alert Settings API
+# AI Smart Reply Draft API
+# --------------------------------------------------------------------------
+
+@app.post("/api/conversations/<int:conversation_id>/ai-draft")
+@login_required
+def api_generate_ai_draft(conversation_id):
+    data = request.get_json(silent=True) or {}
+    instructions = data.get("instructions")
+    tone = data.get("tone")
+
+    if tone and not instructions:
+        if tone == "quote":
+            instructions = "Generate a formal luxury quotation with Mercedes-Benz vehicle proposal and pricing breakdown."
+        elif tone == "confirm":
+            instructions = "Generate an executive VIP booking confirmation with chauffeur assignment and flight monitoring details."
+        elif tone == "details":
+            instructions = "Politely request missing trip details: flight number, passenger count, luggage count, or child seats."
+
+    with db_session() as conn:
+        convo = models.get_conversation(conn, conversation_id)
+        if not convo:
+            return jsonify({"error": "not found"}), 404
+        messages = models.list_messages(conn, conversation_id)
+
+    import ai_reply_generator
+    result = ai_reply_generator.generate_smart_replies(
+        conversation=dict(convo),
+        messages=[dict(m) for m in messages],
+        custom_instructions=instructions,
+    )
+    return jsonify(result)
+
+
+# --------------------------------------------------------------------------
+# Email & Signature Settings API
+# --------------------------------------------------------------------------
+
+DEFAULT_OFFICIAL_SIGNATURE_TEXT = """Lasaad
+Phone: +32 487 44 67 73
+Kind regards | Met vriendelijke groet | Kind regards | مع أطيب التحيات | С уважением
+
+Business Limousine Services - Worldwide Travel Services
+Groundtransportation | Private Aviation | Concierge | Bodyguard"""
+
+DEFAULT_OFFICIAL_SIGNATURE_HTML = """<div style="font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #333333; line-height: 1.5; margin-top: 20px;">
+  <div style="font-weight: bold; font-size: 15px; color: #1E293B;">Lasaad</div>
+  <div style="color: #2563EB; font-weight: 600; margin: 2px 0;">Phone: <a href="tel:+32487446773" style="color: #2563EB; text-decoration: none;">+32 487 44 67 73</a></div>
+  <div style="color: #B45309; font-size: 11.5px; font-weight: 500; margin: 4px 0 10px;">Kind regards | Met vriendelijke groet | Kind regards | مع أطيب التحيات | С уважением</div>
+  <div style="border-top: 1px solid #E2E8F0; padding-top: 8px;">
+    <div style="font-weight: 700; color: #0F172A; text-decoration: underline; font-size: 12.5px;">Business Limousine Services - Worldwide Travel Services</div>
+    <div style="color: #64748B; font-size: 11.5px; margin-top: 2px;">Groundtransportation | Private Aviation | Concierge | Bodyguard</div>
+  </div>
+</div>"""
+
+@app.get("/api/settings/email")
+@login_required
+def api_get_email_settings():
+    with db_session() as conn:
+        sig_text = models.get_setting(conn, "email_signature_text")
+        sig_html = models.get_setting(conn, "email_signature_html")
+        default_cc = models.get_setting(conn, "email_default_cc")
+        dispatcher_name = models.get_setting(conn, "email_dispatcher_name")
+        dispatcher_phone = models.get_setting(conn, "email_dispatcher_phone")
+
+    return jsonify({
+        "signature_text": sig_text if sig_text is not None else DEFAULT_OFFICIAL_SIGNATURE_TEXT,
+        "signature_html": sig_html if sig_html is not None else DEFAULT_OFFICIAL_SIGNATURE_HTML,
+        "default_cc_email": default_cc if default_cc is not None else "info@business-limousine.be",
+        "dispatcher_name": dispatcher_name if dispatcher_name is not None else "Lasaad",
+        "dispatcher_phone": dispatcher_phone if dispatcher_phone is not None else "+32 487 44 67 73",
+    })
+
+
+@app.post("/api/settings/email")
+@roles_required("ADMIN", "DISPATCHER")
+def api_save_email_settings():
+    data = request.get_json(silent=True) or {}
+    sig_text = data.get("signature_text")
+    sig_html = data.get("signature_html")
+    default_cc = data.get("default_cc_email")
+    dispatcher_name = data.get("dispatcher_name")
+    dispatcher_phone = data.get("dispatcher_phone")
+
+    with db_session() as conn:
+        if sig_text is not None:
+            models.set_setting(conn, "email_signature_text", sig_text.strip())
+        if sig_html is not None:
+            models.set_setting(conn, "email_signature_html", sig_html.strip())
+        if default_cc is not None:
+            models.set_setting(conn, "email_default_cc", default_cc.strip())
+        if dispatcher_name is not None:
+            models.set_setting(conn, "email_dispatcher_name", dispatcher_name.strip())
+        if dispatcher_phone is not None:
+            models.set_setting(conn, "email_dispatcher_phone", dispatcher_phone.strip())
+
+    return jsonify({
+        "success": True,
+        "message": "Paramètres d'email et signature enregistrés avec succès.",
+    })
+
+
+# --------------------------------------------------------------------------
+# WhatsApp / Telegram Dispatch Alert Settings API
 # --------------------------------------------------------------------------
 
 @app.get("/api/settings/whatsapp")

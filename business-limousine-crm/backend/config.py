@@ -20,16 +20,16 @@ UPLOADS_DIR = PROJECT_ROOT / "uploads"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULTS = {
-    "IMAP_HOST": "imap.gmail.com",
+    "IMAP_HOST": "pro3.mail.ovh.net",
     "IMAP_PORT": "993",
     "IMAP_FOLDER": "INBOX",
-    "SMTP_HOST": "smtp.gmail.com",
+    "SMTP_HOST": "pro3.mail.ovh.net",
     "SMTP_PORT": "587",
     "SMTP_FROM_NAME": "Business Limousine",
     "GEMINI_MODEL": "gemini-3.5-flash-lite",
     "DB_PATH": str(PROJECT_ROOT / "crm.db"),
     "POLL_INTERVAL_SECONDS": "60",
-    "INITIAL_SYNC_LIMIT": "110",
+    "INITIAL_SYNC_LIMIT": "100",
     "SECRET_KEY": "business-limousine-secure-dispatch-key-2026",
     "FLASK_HOST": "0.0.0.0",
     "FLASK_PORT": "5000",
