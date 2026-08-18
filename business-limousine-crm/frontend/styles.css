@@ -38,6 +38,15 @@
   --maroon: #93413F;
   --maroon-soft: rgba(147, 65, 63, 0.12);
 
+  --doccle: #0284C7;
+  --doccle-soft: rgba(2, 132, 199, 0.14);
+
+  --ebox: #4F46E5;
+  --ebox-soft: rgba(79, 70, 229, 0.14);
+
+  --important: #D97706;
+  --important-soft: rgba(217, 119, 6, 0.14);
+
   --font-display: 'Oswald', sans-serif;
   --font-body: 'Inter', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
@@ -255,6 +264,57 @@ button, input, textarea, select {
 }
 
 .status-nav-item.active .count { color: var(--brass); }
+
+/* Important Mails Tree & Sub-items */
+.status-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.status-nav-item.nav-item-parent {
+  font-weight: 600;
+}
+
+.status-nav-item.nav-item-parent .label-text-important {
+  color: #F2F3F5;
+  font-weight: 600;
+}
+
+.status-nav-sub-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-left: 14px;
+  padding-left: 10px;
+  border-left: 1.5px solid rgba(255, 255, 255, 0.1);
+  margin-top: 1px;
+  margin-bottom: 3px;
+}
+
+.status-nav-item.status-nav-sub-item {
+  padding: 6.5px 8px;
+  font-size: 12.5px;
+  color: var(--text-soft-on-ink);
+  border-radius: var(--radius-sm);
+}
+
+.status-nav-item.status-nav-sub-item:hover {
+  background: var(--ink-2);
+  color: #FFFFFF;
+}
+
+.status-nav-item.status-nav-sub-item.active {
+  background: var(--ink-3);
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+.status-nav-item.status-nav-sub-item .dot {
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+}
 
 .sidebar-footer {
   flex-shrink: 0;
@@ -890,13 +950,28 @@ button, input, textarea, select {
 .status-DISCUSSION  { background: var(--steel-soft); color: var(--steel); }
 .status-CONFIRMED   { background: var(--forest-soft); color: var(--forest); }
 .status-CLOSED       { background: var(--slate-soft); color: var(--slate); }
+.status-DOCCLE       { background: var(--doccle-soft); color: var(--doccle); }
+.status-EBOX         { background: var(--ebox-soft); color: var(--ebox); }
+.status-IMPORTANT    { background: var(--important-soft); color: var(--important); }
 .status-OTHER        { background: var(--maroon-soft); color: var(--maroon); }
 
 .row-tag.status-NEW_REQUEST { background: var(--brass); }
 .row-tag.status-DISCUSSION  { background: var(--steel); }
 .row-tag.status-CONFIRMED   { background: var(--forest); }
 .row-tag.status-CLOSED       { background: var(--slate); }
+.row-tag.status-DOCCLE       { background: var(--doccle); }
+.row-tag.status-EBOX         { background: var(--ebox); }
+.row-tag.status-IMPORTANT    { background: var(--important); }
 .row-tag.status-OTHER        { background: var(--maroon); }
+
+.dot.status-NEW_REQUEST { background: var(--brass); }
+.dot.status-DISCUSSION  { background: var(--steel); }
+.dot.status-CONFIRMED   { background: var(--forest); }
+.dot.status-CLOSED       { background: var(--slate); }
+.dot.status-DOCCLE       { background: #0EA5E9; box-shadow: 0 0 6px rgba(14, 165, 233, 0.5); }
+.dot.status-EBOX         { background: #6366F1; box-shadow: 0 0 6px rgba(99, 102, 241, 0.5); }
+.dot.status-IMPORTANT    { background: #F59E0B; box-shadow: 0 0 6px rgba(245, 158, 11, 0.5); }
+.dot.status-OTHER        { background: var(--maroon); }
 
 /* ---------------------------------------------------------------------- */
 /* Detail panel                                                            */

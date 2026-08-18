@@ -20,7 +20,7 @@ GEMINI_ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
 
-VALID_CATEGORIES = {"NEW_REQUEST", "DISCUSSION", "OTHER"}
+VALID_CATEGORIES = {"NEW_REQUEST", "DISCUSSION", "DOCCLE", "EBOX", "OTHER"}
 
 PROMPT_TEMPLATE = """You are the mail classifier for a chauffeur / limousine service called \
 "Business Limousine". You will be shown one email (subject + body) from the company's shared \
@@ -31,13 +31,15 @@ Categories (choose exactly one):
 a ride, and this looks like the START of a new conversation (not a reply in an existing thread).
 - DISCUSSION: a follow-up message that is clearly part of an existing conversation with a \
 customer (replies, confirmations, questions about an existing booking, thank-you notes, etc).
+- DOCCLE: official documents, pay slips, invoices, or notifications from the Belgian Doccle platform (doccle.be).
+- EBOX: official notifications from the Belgian government or public services eBox (bosa.fgov.be, myebox.be).
 - OTHER: anything not from a real customer lead — newsletters, spam, social media notifications, \
 vendor marketing, automated system mail, etc.
 
 Respond with ONLY a single JSON object (no markdown fences, no commentary) with exactly these \
 keys:
 {{
-  "category": "NEW_REQUEST" | "DISCUSSION" | "OTHER",
+  "category": "NEW_REQUEST" | "DISCUSSION" | "DOCCLE" | "EBOX" | "OTHER",
   "confidence": <number 0.0-1.0>,
   "client_name": <string or null>,
   "client_email": <string or null>,

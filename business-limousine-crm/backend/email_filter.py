@@ -90,6 +90,55 @@ def pre_filter(conn, from_addr, subject, body_text=""):
     if models.is_sender_allowed(conn, from_addr, domain):
         return None
 
+    # --- Layer 1.5: Important Administrative Services (Doccle & eBox) ---
+    body_lower = (body_text or "").strip().lower()
+    
+    # Doccle (Doccer) matching
+    if (
+        "doccle" in from_addr
+        or "doccer" in from_addr
+        or domain in ("doccle.be", "doccle.com")
+        or "doccle" in subject_lower
+        or "doccer" in subject_lower
+    ):
+        logger.info("Doccle notification matched: %s (subject=%s)", from_addr, subject)
+        return {
+            "category": "DOCCLE",
+            "confidence": 1.0,
+            "client_name": "Doccle",
+            "client_email": from_addr,
+            "client_phone": None,
+            "trip_date": None,
+            "origin": None,
+            "destination": None,
+            "summary": "Document ou notification reçu via Doccle",
+        }
+
+    # eBox (eBox Enterprise / Citoyen) matching
+    if (
+        "bosa.fgov.be" in from_addr
+        or "myebox" in from_addr
+        or "ebox" in from_addr
+        or domain in ("myebox.be", "eboxenterprise.be", "ebox.be")
+        or "ebox" in subject_lower
+        or "myebox" in subject_lower
+        or "e-box" in subject_lower
+        or "votre ebox" in body_lower
+        or "myebox.be" in body_lower
+    ):
+        logger.info("eBox notification matched: %s (subject=%s)", from_addr, subject)
+        return {
+            "category": "EBOX",
+            "confidence": 1.0,
+            "client_name": "eBox",
+            "client_email": from_addr,
+            "client_phone": None,
+            "trip_date": None,
+            "origin": None,
+            "destination": None,
+            "summary": "Notification officielle reçue dans votre eBox",
+        }
+
     # --- Layer 2: blacklist -> instant OTHER, zero AI call ---
     blocked = models.get_matching_blocked_sender(conn, from_addr, domain)
     if blocked:

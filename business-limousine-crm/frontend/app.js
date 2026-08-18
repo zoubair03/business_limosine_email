@@ -7,8 +7,24 @@ const STATUSES = [
   { key: "DISCUSSION", label: "In discussion" },
   { key: "CONFIRMED", label: "Confirmed" },
   { key: "CLOSED", label: "Closed" },
+  { key: "IMPORTANT", label: "Important Mails" },
+  { key: "DOCCLE", label: "Doccle" },
+  { key: "EBOX", label: "eBox" },
   { key: "OTHER", label: "Other" },
 ];
+
+function getStatusMeta(key) {
+  if (key === "IMPORTANT") return { key: "IMPORTANT", label: "Important Mails", eyebrow: "MANIFEST / IMPORTANT" };
+  if (key === "DOCCLE") return { key: "DOCCLE", label: "Doccle", eyebrow: "IMPORTANT MAILS / DOCCLE" };
+  if (key === "EBOX") return { key: "EBOX", label: "eBox", eyebrow: "IMPORTANT MAILS / EBOX" };
+  if (key === "ALL") return { key: "ALL", label: "All conversations", eyebrow: "Manifest" };
+  if (key === "NEW_REQUEST") return { key: "NEW_REQUEST", label: "New requests", eyebrow: "Manifest" };
+  if (key === "DISCUSSION") return { key: "DISCUSSION", label: "In discussion", eyebrow: "Manifest" };
+  if (key === "CONFIRMED") return { key: "CONFIRMED", label: "Confirmed", eyebrow: "Manifest" };
+  if (key === "CLOSED") return { key: "CLOSED", label: "Closed", eyebrow: "Manifest" };
+  if (key === "OTHER") return { key: "OTHER", label: "Other", eyebrow: "Manifest" };
+  return { key, label: key, eyebrow: "Manifest" };
+}
 
 const state = {
   status: "ALL",
@@ -192,11 +208,21 @@ async function handleLogout() {
 
 function renderStatusNav() {
   const nav = el("status-nav");
-  nav.innerHTML = STATUSES.map((s) => {
+  let html = "";
+
+  const mainItems = [
+    { key: "ALL", label: "All conversations" },
+    { key: "NEW_REQUEST", label: "New requests" },
+    { key: "DISCUSSION", label: "In discussion" },
+    { key: "CONFIRMED", label: "Confirmed" },
+    { key: "CLOSED", label: "Closed" },
+  ];
+
+  mainItems.forEach((s) => {
     const count = state.counts[s.key] ?? 0;
     const activeClass = s.key === state.status ? "active" : "";
     const dotClass = s.key === "ALL" ? "" : `status-${s.key}`;
-    return `
+    html += `
       <button class="status-nav-item ${activeClass}" data-status="${s.key}">
         <span class="label">
           ${s.key !== "ALL" ? `<span class="dot ${dotClass}"></span>` : ""}
@@ -205,12 +231,65 @@ function renderStatusNav() {
         <span class="count">${count}</span>
       </button>
     `;
-  }).join("");
+  });
+
+  // Important Mails Group & Sub-items
+  const importantCount = state.counts["IMPORTANT"] ?? 0;
+  const isImportantActive = state.status === "IMPORTANT";
+  const doccleCount = state.counts["DOCCLE"] ?? 0;
+  const isDoccleActive = state.status === "DOCCLE";
+  const eboxCount = state.counts["EBOX"] ?? 0;
+  const isEboxActive = state.status === "EBOX";
+
+  html += `
+    <div class="status-nav-group">
+      <button class="status-nav-item nav-item-parent ${isImportantActive ? "active" : ""}" data-status="IMPORTANT">
+        <span class="label">
+          <span class="dot status-IMPORTANT"></span>
+          <span class="label-text-important">Important Mails</span>
+        </span>
+        <span class="count">${importantCount}</span>
+      </button>
+      <div class="status-nav-sub-items">
+        <button class="status-nav-item status-nav-sub-item ${isDoccleActive ? "active" : ""}" data-status="DOCCLE">
+          <span class="label">
+            <span class="dot status-DOCCLE"></span>
+            Doccle
+          </span>
+          <span class="count">${doccleCount}</span>
+        </button>
+        <button class="status-nav-item status-nav-sub-item ${isEboxActive ? "active" : ""}" data-status="EBOX">
+          <span class="label">
+            <span class="dot status-EBOX"></span>
+            eBox
+          </span>
+          <span class="count">${eboxCount}</span>
+        </button>
+      </div>
+    </div>
+  `;
+
+  // Other item
+  const otherCount = state.counts["OTHER"] ?? 0;
+  const isOtherActive = state.status === "OTHER";
+  html += `
+    <button class="status-nav-item ${isOtherActive ? "active" : ""}" data-status="OTHER">
+      <span class="label">
+        <span class="dot status-OTHER"></span>
+        Other
+      </span>
+      <span class="count">${otherCount}</span>
+    </button>
+  `;
+
+  nav.innerHTML = html;
 
   nav.querySelectorAll(".status-nav-item").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.status = btn.dataset.status;
-      el("panel-title").textContent = STATUSES.find((s) => s.key === state.status).label;
+      const meta = getStatusMeta(state.status);
+      el("panel-title").textContent = meta.label;
+      if (el("topbar-eyebrow")) el("topbar-eyebrow").textContent = meta.eyebrow;
       switchView("conversations");
       loadConversations();
     });
@@ -249,15 +328,16 @@ function switchView(view) {
     if (waView) waView.hidden = true;
     if (waNavBtn) waNavBtn.classList.remove("active");
     
+    document.querySelectorAll("#status-nav .status-nav-item").forEach((b) => b.classList.remove("active"));
     const activeStatusBtn = document.querySelector(`#status-nav .status-nav-item[data-status="${state.status}"]`);
     if (activeStatusBtn) activeStatusBtn.classList.add("active");
 
     if (searchWrap) searchWrap.hidden = false;
     if (topbarActions) topbarActions.hidden = true;
-    if (eyebrowEl) eyebrowEl.textContent = "Manifest";
     
-    const currStatus = STATUSES.find((s) => s.key === state.status);
-    if (titleEl) titleEl.textContent = currStatus ? currStatus.label : "All conversations";
+    const meta = getStatusMeta(state.status);
+    if (eyebrowEl) eyebrowEl.textContent = meta.eyebrow;
+    if (titleEl) titleEl.textContent = meta.label;
   }
 }
 
@@ -1093,7 +1173,16 @@ function applyFormatting(formatType) {
 
 function renderStatusSelect(currentStatus) {
   const sel = el("status-select");
-  sel.innerHTML = STATUSES.filter((s) => s.key !== "ALL").map((s) => `
+  const options = [
+    { key: "NEW_REQUEST", label: "New requests" },
+    { key: "DISCUSSION", label: "In discussion" },
+    { key: "CONFIRMED", label: "Confirmed" },
+    { key: "CLOSED", label: "Closed" },
+    { key: "DOCCLE", label: "Doccle" },
+    { key: "EBOX", label: "eBox" },
+    { key: "OTHER", label: "Other" },
+  ];
+  sel.innerHTML = options.map((s) => `
     <option value="${s.key}" ${s.key === currentStatus ? "selected" : ""}>
       ${s.label}
     </option>

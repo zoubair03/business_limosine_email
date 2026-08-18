@@ -13,9 +13,9 @@ from database import db_session
 # Statuses that the AI classifier / auto-sync are allowed to set on their
 # own. Anything a staff member sets manually (e.g. CONFIRMED, CLOSED) is
 # never overwritten by an incoming email.
-AUTO_MANAGED_STATUSES = {"NEW_REQUEST", "DISCUSSION", "OTHER"}
+AUTO_MANAGED_STATUSES = {"NEW_REQUEST", "DISCUSSION", "DOCCLE", "EBOX", "OTHER"}
 
-ALL_STATUSES = ["NEW_REQUEST", "DISCUSSION", "CONFIRMED", "CLOSED", "OTHER"]
+ALL_STATUSES = ["NEW_REQUEST", "DISCUSSION", "CONFIRMED", "CLOSED", "DOCCLE", "EBOX", "OTHER"]
 
 
 def _now():
@@ -75,10 +75,10 @@ def find_conversation_by_thread_headers(conn, in_reply_to=None, references=None)
 
 def find_active_conversation_by_email(conn, client_email, status=None):
     """Finds an existing open conversation for this client email."""
-    if status == "OTHER":
+    if status in ("OTHER", "DOCCLE", "EBOX"):
         row = conn.execute(
-            "SELECT id FROM conversations WHERE client_email = ? AND status = 'OTHER' ORDER BY last_message_at DESC LIMIT 1",
-            (client_email,),
+            "SELECT id FROM conversations WHERE client_email = ? AND status = ? ORDER BY last_message_at DESC LIMIT 1",
+            (client_email, status),
         ).fetchone()
         return row["id"] if row else None
 
@@ -96,7 +96,9 @@ def get_or_create_conversation_for_inbound(conn, parsed, ai_result):
     1. If In-Reply-To / References match an existing thread -> attach to that thread.
     2. If AI classified as NEW_REQUEST -> create a separate NEW booking conversation.
     3. If AI classified as DISCUSSION -> attach to open active conversation if available.
-    4. If AI classified as OTHER -> attach to existing OTHER thread for this sender.
+    4. If classified as DOCCLE -> attach to existing DOCCLE thread for this sender.
+    5. If classified as EBOX -> attach to existing EBOX thread for this sender.
+    6. If classified as OTHER -> attach to existing OTHER thread for this sender.
     """
     client_email = (ai_result.get("client_email") or parsed.get("from_addr") or "").lower().strip()
     if not client_email:
@@ -125,6 +127,20 @@ def get_or_create_conversation_for_inbound(conn, parsed, ai_result):
         if active_cid:
             return active_cid, False
         cid = create_conversation(conn, client_email, client_name=client_name, status="DISCUSSION")
+        return cid, True
+
+    elif category == "DOCCLE":
+        doccle_cid = find_active_conversation_by_email(conn, client_email, status="DOCCLE")
+        if doccle_cid:
+            return doccle_cid, False
+        cid = create_conversation(conn, client_email, client_name=client_name or "Doccle", status="DOCCLE")
+        return cid, True
+
+    elif category == "EBOX":
+        ebox_cid = find_active_conversation_by_email(conn, client_email, status="EBOX")
+        if ebox_cid:
+            return ebox_cid, False
+        cid = create_conversation(conn, client_email, client_name=client_name or "eBox", status="EBOX")
         return cid, True
 
     else:  # OTHER
@@ -215,9 +231,14 @@ def touch_conversation_last_message(conn, conversation_id, when_iso):
 def list_conversations(conn, status=None, search=None):
     query = "SELECT * FROM conversations"
     clauses, params = [], []
-    if status and status != "ALL":
+    if status == "IMPORTANT":
+        clauses.append("status IN ('DOCCLE', 'EBOX', 'IMPORTANT')")
+    elif status and status != "ALL":
         clauses.append("status = ?")
         params.append(status)
+    elif not status or status == "ALL":
+        # 'All conversations' in dispatch shows active transport booking conversations
+        clauses.append("status NOT IN ('OTHER', 'DOCCLE', 'EBOX')")
     if search:
         clauses.append(
             "(client_name LIKE ? OR client_email LIKE ? OR origin LIKE ? OR destination LIKE ?)"
@@ -237,7 +258,8 @@ def status_counts(conn):
     counts = {s: 0 for s in ALL_STATUSES}
     for row in rows:
         counts[row["status"]] = row["n"]
-    counts["ALL"] = sum(counts.values())
+    counts["IMPORTANT"] = counts.get("DOCCLE", 0) + counts.get("EBOX", 0)
+    counts["ALL"] = sum(count for st, count in counts.items() if st not in ("OTHER", "DOCCLE", "EBOX", "IMPORTANT"))
     return counts
 
 

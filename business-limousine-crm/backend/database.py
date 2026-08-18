@@ -172,6 +172,31 @@ def init_db():
         except Exception:
             pass
 
+        # Migrate existing Doccle & eBox messages and conversations
+        try:
+            conn.execute("""
+                UPDATE messages SET ai_category = 'DOCCLE'
+                WHERE (lower(from_addr) LIKE '%doccle%' OR lower(from_addr) LIKE '%doccer%' OR lower(subject) LIKE '%doccle%' OR lower(subject) LIKE '%doccer%')
+                  AND (ai_category IS NULL OR ai_category = 'OTHER')
+            """)
+            conn.execute("""
+                UPDATE conversations SET status = 'DOCCLE', client_name = 'Doccle'
+                WHERE (lower(client_email) LIKE '%doccle%' OR lower(client_email) LIKE '%doccer%')
+                  AND status = 'OTHER'
+            """)
+            conn.execute("""
+                UPDATE messages SET ai_category = 'EBOX'
+                WHERE (lower(from_addr) LIKE '%bosa.fgov.be%' OR lower(from_addr) LIKE '%myebox%' OR lower(from_addr) LIKE '%ebox%' OR lower(subject) LIKE '%ebox%')
+                  AND (ai_category IS NULL OR ai_category = 'OTHER')
+            """)
+            conn.execute("""
+                UPDATE conversations SET status = 'EBOX', client_name = 'eBox'
+                WHERE (lower(client_email) LIKE '%bosa.fgov.be%' OR lower(client_email) LIKE '%myebox%' OR lower(client_email) LIKE '%ebox%')
+                  AND status = 'OTHER'
+            """)
+        except Exception:
+            pass
+
 
 if __name__ == "__main__":
     init_db()
