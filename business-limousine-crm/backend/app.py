@@ -32,6 +32,7 @@ from auth import (
 from config import Config, PROJECT_ROOT, UPLOADS_DIR
 from database import db_session, init_db
 from email_sender import send_reply
+import lead_stats
 import models
 
 logging.basicConfig(level=logging.INFO)
@@ -362,6 +363,28 @@ def _load_analytics():
 
     _analytics_cache.update({"mtime": mtime, "path": str(path), "payload": payload})
     return payload, path == ANALYTICS_SAMPLE
+
+
+@app.get("/api/lead-stats")
+@login_required
+def api_lead_stats():
+    """Analytics over the inbox — enquiries, response times, conversion.
+
+    Separate from /api/analytics, which reports executed bookings from the
+    Waynium export. This one reads the CRM database and describes the stage
+    before that: what came in, how fast it was answered, what converted.
+    """
+    raw = request.args.get("days", "90")
+    if raw in ("all", "0", ""):
+        days = None
+    else:
+        try:
+            days = max(1, min(int(raw), 3650))
+        except (TypeError, ValueError):
+            days = 90
+
+    with db_session() as conn:
+        return jsonify(lead_stats.lead_stats(conn, days=days))
 
 
 @app.get("/api/analytics")

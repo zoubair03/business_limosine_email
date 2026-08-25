@@ -2300,6 +2300,198 @@ const built = new Set();  // views already rendered once
 
 
 /* ============================================================
+   LEADS — analytics over the inbox
+   Separate data source from the rest of this module: /api/lead-stats reads the
+   CRM database (enquiries, replies, conversion), whereas everything above reads
+   the Waynium export of executed bookings.
+   ============================================================ */
+let LEADS = null;
+
+function fmtHours(h){
+  if(h == null) return "—";
+  if(h < 1) return Math.round(h * 60) + " min";
+  if(h < 48) return (Math.round(h * 10) / 10) + " h";
+  return Math.round(h / 24) + " days";
+}
+
+function buildLeads(){
+  const L = LEADS;
+  if(!L) return;
+  const K = L.kpis;
+
+  /* ---- headline ---- */
+  const kpis = [
+    {label:"Enquiries", value:fmtInt(K.leads),
+     sub: L.window_days ? "in the last " + L.window_days + " days" : "all time"},
+    {label:"Converted", value: K.conversion_pct == null ? "—" : K.conversion_pct + "%",
+     sub: fmtInt(K.confirmed) + " confirmed"},
+    {label:"Median first reply", value:fmtHours(K.median_response_hours),
+     sub:"across " + fmtInt(K.answered_count) + " answered"},
+    {label:"Awaiting our reply", value:fmtInt(K.awaiting_reply),
+     sub:"newest message is theirs", tone: K.awaiting_reply > 0 ? "warn" : null},
+    {label:"Never answered", value:fmtInt(K.never_answered),
+     sub:"no reply was ever sent", tone: K.never_answered > 0 ? "crit" : null},
+    {label:"Still open", value:fmtInt(K.open_leads), sub:"new or in discussion"},
+  ];
+  const kg = $("#lead-kpis");
+  kg.innerHTML = "";
+  kpis.forEach(k => {
+    const d = document.createElement("div");
+    d.className = "kpi" + (k.tone ? " kpi-" + k.tone : "");
+    d.innerHTML = `<div class="label">${k.label}</div>
+                   <div class="value tabular">${k.value}</div>
+                   <div class="sub">${k.sub}</div>`;
+    kg.appendChild(d);
+  });
+
+  /* ---- weekly volume ---- */
+  registerChart(() => columnChart($("#chart-lead-volume"), {
+    data: L.volume, height: 250,
+    value: d => d.n,
+    label: d => d.week_start ? d.week_start.slice(5) : d.week,
+    valueLabel: d => fmtInt(d.n),
+    showXLabel: (d, i) => i % Math.max(1, Math.ceil(L.volume.length / 12)) === 0,
+    ariaLabel: "New enquiries per week",
+    tooltip: d => ({title: "Week of " + (d.week_start || d.week),
+                    rows: [{key:"Enquiries", val: fmtInt(d.n)},
+                           {key:"Confirmed", val: fmtInt(d.confirmed)}]}),
+  }));
+
+  /* ---- funnel ---- */
+  const FUNNEL_LABEL = {NEW_REQUEST:"New request", DISCUSSION:"In discussion",
+                        CONFIRMED:"Confirmed", CLOSED:"Closed"};
+  const FUNNEL_COLOR = {NEW_REQUEST:"var(--s4)", DISCUSSION:"var(--s1)",
+                        CONFIRMED:"var(--s3)", CLOSED:"var(--muted)"};
+  const total = L.funnel.reduce((a, f) => a + f.count, 0) || 1;
+  registerChart(() => horizontalBarChart($("#chart-lead-funnel"), {
+    data: L.funnel, labelWidth: 118, barHeight: 24,
+    value: d => d.count,
+    label: d => FUNNEL_LABEL[d.status] || d.status,
+    color: d => FUNNEL_COLOR[d.status] || "var(--accent)",
+    valueLabel: d => fmtInt(d.count) + "  (" + Math.round(100 * d.count / total) + "%)",
+    ariaLabel: "Enquiries by stage",
+  }));
+
+  /* ---- how fast we replied ---- */
+  registerChart(() => horizontalBarChart($("#chart-lead-response"), {
+    data: L.response_buckets, labelWidth: 92, barHeight: 22,
+    value: d => d.count,
+    label: d => d.band,
+    // Slow replies shade toward the warning end, so the shape of the problem
+    // is visible without reading the axis.
+    // Ramp has to darken monotonically with severity — brass sat lighter than
+    // the orange band before it, which read as "1-3 days is better than 4-24h".
+    color: d => ["var(--s3)","var(--s3)","var(--s4)","var(--serious)","var(--critical)"][
+      L.response_buckets.indexOf(d)] || "var(--accent)",
+    valueLabel: d => fmtInt(d.count),
+    ariaLabel: "First reply time",
+  }));
+
+  /* ---- when enquiries arrive ---- */
+  registerChart(() => columnChart($("#chart-lead-hour"), {
+    data: L.by_hour, height: 200,
+    value: d => d.count,
+    label: d => String(d.hour).padStart(2, "0"),
+    valueLabel: d => fmtInt(d.count),
+    showXLabel: (d) => d.hour % 3 === 0,
+    ariaLabel: "Enquiries by hour of day",
+    tooltip: d => ({title: String(d.hour).padStart(2,"0") + ":00",
+                    rows: [{key:"Enquiries", val: fmtInt(d.count)}]}),
+  }));
+  registerChart(() => columnChart($("#chart-lead-weekday"), {
+    data: L.by_weekday, height: 200,
+    value: d => d.count,
+    label: d => d.day,
+    valueLabel: d => fmtInt(d.count),
+    ariaLabel: "Enquiries by weekday",
+  }));
+
+  /* ---- ageing of open leads ---- */
+  registerChart(() => horizontalBarChart($("#chart-lead-ageing"), {
+    data: L.ageing, labelWidth: 92, barHeight: 22,
+    value: d => d.count,
+    label: d => d.band,
+    color: d => ["var(--s3)","var(--s3)","var(--s4)","var(--serious)","var(--critical)"][
+      L.ageing.indexOf(d)] || "var(--accent)",
+    valueLabel: d => fmtInt(d.count),
+    ariaLabel: "Age of open enquiries",
+  }));
+
+  /* ---- tables ---- */
+  buildLeadTable($("#table-lead-routes"), L.top_routes,
+    ["Route", "Enquiries", "Confirmed", "Rate"],
+    r => [`${escapeHtmlA(r.origin)} → ${escapeHtmlA(r.destination)}`,
+          fmtInt(r.n), fmtInt(r.confirmed),
+          r.n ? Math.round(100 * r.confirmed / r.n) + "%" : "—"]);
+
+  buildLeadTable($("#table-lead-accounts"), L.top_accounts,
+    ["Account", "Enquiries", "Confirmed", "Rate"],
+    r => [escapeHtmlA(r.name || r.email),
+          fmtInt(r.leads), fmtInt(r.confirmed),
+          r.leads ? Math.round(100 * r.confirmed / r.leads) + "%" : "—"]);
+
+  buildAttentionTable(L.needs_attention);
+}
+
+function escapeHtmlA(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+function buildLeadTable(t, rows, headers, cells){
+  t.innerHTML = "";
+  if(!rows || !rows.length){
+    t.innerHTML = '<tbody><tr><td style="color:var(--muted);">Nothing in this period.</td></tr></tbody>';
+    return;
+  }
+  const head = document.createElement("thead");
+  head.innerHTML = "<tr>" + headers.map((h, i) =>
+    `<th${i ? ' class="num"' : ""}>${h}</th>`).join("") + "</tr>";
+  t.appendChild(head);
+  const tb = document.createElement("tbody");
+  rows.forEach(r => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = cells(r).map((c, i) =>
+      i ? `<td class="num tabular">${c}</td>` : `<td class="strong" style="white-space:normal;">${c}</td>`).join("");
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb);
+}
+
+/* The one table that is a worklist rather than a report: each row is a lead
+   waiting on us, and clicking it opens that conversation. */
+function buildAttentionTable(rows){
+  const t = $("#table-lead-attention");
+  t.innerHTML = "";
+  if(!rows || !rows.length){
+    t.innerHTML = '<tbody><tr><td style="color:var(--good); font-weight:600;">Nothing is waiting on a reply.</td></tr></tbody>';
+    return;
+  }
+  const head = document.createElement("thead");
+  head.innerHTML = '<tr><th>Client</th><th>Route</th><th>Stage</th><th class="num">Waiting</th><th></th></tr>';
+  t.appendChild(head);
+  const tb = document.createElement("tbody");
+  rows.forEach(r => {
+    const route = (r.origin && r.destination)
+      ? `${escapeHtmlA(r.origin)} → ${escapeHtmlA(r.destination)}` : "—";
+    const h = r.waiting_hours;
+    const sev = h >= 72 ? "crit" : (h >= 24 ? "warn" : "good");
+    const tr = document.createElement("tr");
+    tr.className = "lead-attention-row";
+    tr.dataset.conversationId = r.id;
+    tr.innerHTML =
+      `<td class="strong" style="white-space:normal;">${escapeHtmlA(r.client_name || r.client_email)}</td>` +
+      `<td style="white-space:normal;">${route}</td>` +
+      `<td><span class="status-pill status-${r.status}">${r.status.replace("_"," ")}</span></td>` +
+      `<td class="num tabular"><span class="wait-${sev}">${fmtHours(h)}</span></td>` +
+      `<td class="num"><span class="lead-open-hint">Open →</span></td>`;
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb);
+}
+
+/* ============================================================
    MODULE ENTRY POINTS
    ============================================================ */
 
@@ -2317,7 +2509,26 @@ const VIEW_BUILDERS = {
   "quotes-calculator":  [buildCalculator],
   "quotes-pricing":     [buildPricing],
   "reviews-compose":    [buildReviews],
+  "leads-overview":     [buildLeads],
 };
+
+/* Lead stats come from the CRM database and change constantly, so unlike the
+   booking analytics they are re-fetched on each open rather than cached for the
+   session. `days` is the selected window. */
+async function loadLeads(days) {
+  const q = days == null ? "all" : String(days);
+  const res = await fetch(`/api/lead-stats?days=${encodeURIComponent(q)}`, {
+    credentials: "same-origin",
+  });
+  if (!res.ok) {
+    const err = new Error(`Lead stats unavailable (HTTP ${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  LEADS = await res.json();
+  built.delete("leads-overview");   // force a rebuild with the new window
+  return LEADS;
+}
 
 async function load() {
   if (DATA) return DATA;
@@ -2341,6 +2552,13 @@ async function load() {
 /* Charts measure their container, so a view must be visible before it is built.
    The shell unhides the section, then calls this. */
 function show(view) {
+  // The leads view has its own payload and does not need the bookings analytics.
+  if (view === "leads-overview") {
+    if (!LEADS || built.has(view)) return;
+    try { buildLeads(); } catch (e) { console.error("Analytics: leads builder failed", e); }
+    built.add(view);
+    return;
+  }
   if (!DATA || built.has(view)) return;
   const builders = VIEW_BUILDERS[view];
   if (!builders) {
@@ -2374,6 +2592,7 @@ function relayout() {
 
 global.Analytics = {
   load,
+  loadLeads,
   show,
   relayout,
   isSample: () => IS_SAMPLE,

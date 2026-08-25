@@ -364,6 +364,13 @@ const VIEWS = {
     title: "Team & User Management",
     onShow: () => loadUsers(),
   },
+  leads: {
+    section: "leads-view",
+    navBtn: "nav-leads",
+    eyebrow: "LEAD INTELLIGENCE",
+    title: "Lead Insights",
+    onShow: () => openLeadsScreen(),
+  },
   analytics: {
     section: "analytics-view",
     navBtn: "nav-analytics",
@@ -464,6 +471,46 @@ async function openAnalyticsScreen(screen) {
     active.classList.add("active");
     Analytics.show(active.id.replace("apanel-", ""));
   }
+}
+
+/* Lead insights read the CRM database, so they are re-fetched every time the
+   screen is opened rather than cached — an enquiry answered a minute ago should
+   not still be listed as waiting. */
+let leadWindowDays = 90;
+
+async function openLeadsScreen() {
+  const section = el("leads-view");
+  if (!section) return;
+  try {
+    await Analytics.loadLeads(leadWindowDays);
+    Analytics.show("leads-overview");
+  } catch (err) {
+    renderAnalyticsError(section, err);
+  }
+}
+
+function wireLeadControls() {
+  const seg = el("lead-window");
+  if (seg) {
+    seg.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button[data-days]");
+      if (!btn) return;
+      seg.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      leadWindowDays = btn.dataset.days === "all" ? null : Number(btn.dataset.days);
+      await openLeadsScreen();
+    });
+  }
+
+  // The waiting-on-a-reply table is a worklist: a row opens that conversation.
+  document.addEventListener("click", (e) => {
+    const row = e.target.closest(".lead-attention-row");
+    if (!row) return;
+    const id = Number(row.dataset.conversationId);
+    if (!id) return;
+    switchView("conversations");
+    selectConversation(id, true, true);
+  });
 }
 
 function renderAnalyticsError(section, err) {
@@ -3411,6 +3458,7 @@ function wireEvents() {
   wireViewNav();
   wireConversationList();
   wireInboxControls();
+  wireLeadControls();
   const authenticated = await checkAuth();
   if (authenticated) {
     await loadConversations();

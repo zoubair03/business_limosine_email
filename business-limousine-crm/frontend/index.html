@@ -28,6 +28,12 @@
     </nav>
     <div class="sidebar-section-heading">Intelligence</div>
     <nav class="system-nav">
+      <button class="status-nav-item" id="nav-leads" data-view="leads">
+        <span class="nav-item-left">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+          <span>Lead Insights</span>
+        </span>
+      </button>
       <button class="status-nav-item" id="nav-analytics" data-view="analytics">
         <span class="nav-item-left">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
@@ -419,6 +425,108 @@
     </section>
 
     <!-- Team & User Management View -->
+    <!-- Lead Insights -->
+    <section class="settings-view analytics-scope" id="leads-view" hidden>
+      <div class="apanel active" id="apanel-leads-overview">
+        <div class="lead-toolbar">
+          <div class="segmented" id="lead-window">
+            <button type="button" data-days="30">30 days</button>
+            <button type="button" data-days="90" class="active">90 days</button>
+            <button type="button" data-days="365">12 months</button>
+            <button type="button" data-days="all">All time</button>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="grid grid-kpi" id="lead-kpis"></div>
+        </div>
+
+        <div class="section-block">
+          <div class="card">
+            <div class="card-head"><div>
+              <div class="card-title">Enquiries per week</div>
+              <div class="card-sub">New conversations opened, by week</div>
+            </div></div>
+            <div id="chart-lead-volume"></div>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="grid grid-2">
+            <div class="card">
+              <div class="card-head"><div>
+                <div class="card-title">Where enquiries stand</div>
+                <div class="card-sub">Current stage of every enquiry in the period</div>
+              </div></div>
+              <div id="chart-lead-funnel"></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><div>
+                <div class="card-title">How fast we replied</div>
+                <div class="card-sub">Time from their first message to our first answer</div>
+              </div></div>
+              <div id="chart-lead-response"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="card">
+            <div class="card-head"><div>
+              <div class="card-title">Waiting on a reply</div>
+              <div class="card-sub">Open enquiries whose newest message is theirs — longest wait first</div>
+            </div></div>
+            <div class="table-wrap"><table id="table-lead-attention"></table></div>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="grid grid-2">
+            <div class="card">
+              <div class="card-head"><div>
+                <div class="card-title">Most requested routes</div>
+                <div class="card-sub">And how often each one converts</div>
+              </div></div>
+              <div class="table-wrap"><table id="table-lead-routes"></table></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><div>
+                <div class="card-title">Most active accounts</div>
+                <div class="card-sub">By number of enquiries sent</div>
+              </div></div>
+              <div class="table-wrap"><table id="table-lead-accounts"></table></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="grid grid-3">
+            <div class="card">
+              <div class="card-head"><div>
+                <div class="card-title">Arrival by hour</div>
+                <div class="card-sub">When enquiries land</div>
+              </div></div>
+              <div id="chart-lead-hour"></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><div>
+                <div class="card-title">Arrival by weekday</div>
+                <div class="card-sub">Mon – Sun</div>
+              </div></div>
+              <div id="chart-lead-weekday"></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><div>
+                <div class="card-title">Age of open enquiries</div>
+                <div class="card-sub">All open work, not just this period</div>
+              </div></div>
+              <div id="chart-lead-ageing"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Fleet Analytics -->
     <section class="settings-view analytics-scope" id="analytics-view" hidden>
       <div class="analytics-tabs" role="tablist" aria-label="Fleet Analytics sections">

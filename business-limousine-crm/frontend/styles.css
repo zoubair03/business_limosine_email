@@ -4866,3 +4866,24 @@ select {
 /* --- Sidebar brand ------------------------------------------------------ */
 .brand-name { line-height: 1.12; letter-spacing: 0.005em; }
 .brand-sub { letter-spacing: 0.09em; }
+
+/* --- Lead insights ------------------------------------------------------ */
+.lead-toolbar { display: flex; justify-content: flex-end; margin-bottom: 18px; }
+
+.analytics-scope .kpi-warn { border-left: 3px solid var(--important); }
+.analytics-scope .kpi-crit { border-left: 3px solid var(--maroon); }
+.analytics-scope .kpi-warn .value { color: var(--important); }
+.analytics-scope .kpi-crit .value { color: var(--maroon); }
+
+/* Severity by how long someone has been waiting. */
+.wait-good { color: var(--forest); font-weight: 600; }
+.wait-warn { color: var(--important); font-weight: 700; }
+.wait-crit { color: var(--maroon); font-weight: 700; }
+
+.lead-attention-row { cursor: pointer; }
+.lead-attention-row:hover td { background: var(--paper); }
+.lead-open-hint {
+  font-size: 11px; font-weight: 700; color: var(--brass-strong);
+  opacity: 0; transition: opacity 0.12s;
+}
+.lead-attention-row:hover .lead-open-hint { opacity: 1; }
