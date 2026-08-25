@@ -168,7 +168,19 @@ def index():
 
 
 @app.route("/uploads/<path:filename>")
+@login_required
 def serve_uploads(filename):
+    """Serves a client attachment.
+
+    This route had no auth decorator while every other route had one, so any
+    caller who could reach the server could download any attachment — invoices,
+    bank details — just by knowing the filename. The names are guessable in
+    shape (`inbound_<8 hex>_<original name>`) and leak their own contents: one
+    of them was literally called `_RIB.pdf`.
+
+    `send_from_directory` handles path traversal itself (it safe-joins), so the
+    missing piece was only the session check.
+    """
     return send_from_directory(str(UPLOADS_DIR), filename)
 
 
