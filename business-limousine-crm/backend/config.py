@@ -4,8 +4,10 @@ Central configuration for the Business Limousine CRM backend.
 All values are read dynamically from environment variables (see .env.example)
 and automatically reload if backend/.env is edited.
 """
+import logging
 import os
 from pathlib import Path
+import secrets
 
 try:
     from dotenv import load_dotenv
@@ -14,10 +16,58 @@ except ImportError:
     def load_dotenv(*args, **kwargs):
         pass
 
+logger = logging.getLogger("config")
+
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BACKEND_DIR.parent
 UPLOADS_DIR = PROJECT_ROOT / "uploads"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+# The session key that used to ship as the default in this file. It is in the
+# public git history, so it is treated as compromised and never used.
+_PUBLISHED_DEFAULT_KEY = "business-limousine-secure-dispatch-key-2026"
+
+_SECRET_KEY_FILE = BACKEND_DIR / ".secret_key"
+_secret_key_cache = None
+
+
+def _load_or_create_secret_key():
+    """Reads the instance's session key, generating one on first run.
+
+    Kept in a gitignored file rather than the source so it stays out of the public
+    repository, and persisted rather than generated per-process so a restart does
+    not silently log every user out.
+    """
+    global _secret_key_cache
+    if _secret_key_cache:
+        return _secret_key_cache
+
+    try:
+        if _SECRET_KEY_FILE.exists():
+            key = _SECRET_KEY_FILE.read_text(encoding="utf-8").strip()
+            if key:
+                _secret_key_cache = key
+                return key
+    except OSError as exc:
+        logger.warning("Could not read %s (%s). Generating a session key in memory.",
+                       _SECRET_KEY_FILE.name, exc)
+
+    key = secrets.token_urlsafe(48)
+    try:
+        _SECRET_KEY_FILE.write_text(key, encoding="utf-8")
+        try:
+            os.chmod(_SECRET_KEY_FILE, 0o600)  # best effort; a no-op on some filesystems
+        except OSError:
+            pass
+        logger.info("Generated a new session key in backend/%s.", _SECRET_KEY_FILE.name)
+    except OSError as exc:
+        logger.warning(
+            "Could not persist a session key to %s (%s). Using an in-memory key — "
+            "everyone will be logged out when this process restarts.",
+            _SECRET_KEY_FILE.name, exc,
+        )
+    _secret_key_cache = key
+    return key
 
 DEFAULTS = {
     "IMAP_HOST": "pro3.mail.ovh.net",
@@ -30,7 +80,6 @@ DEFAULTS = {
     "DB_PATH": str(PROJECT_ROOT / "crm.db"),
     "POLL_INTERVAL_SECONDS": "60",
     "INITIAL_SYNC_LIMIT": "100",
-    "SECRET_KEY": "business-limousine-secure-dispatch-key-2026",
     "FLASK_HOST": "0.0.0.0",
     "FLASK_PORT": "5000",
 }
@@ -125,7 +174,26 @@ class _Config:
 
     @property
     def SECRET_KEY(self):
-        return self._get("SECRET_KEY", "business-limousine-secure-dispatch-key-2026")
+        """Signs the session cookie — anyone who knows it can forge a logged-in
+        admin session.
+
+        This used to fall back to a constant committed to the repository, which is
+        public: the fallback was equivalent to no authentication at all. Now the key
+        comes from the environment, or from a generated file kept out of git, and
+        the published constant is rejected outright if it is still configured.
+        """
+        configured = self._get("SECRET_KEY", None)
+        if configured and configured != _PUBLISHED_DEFAULT_KEY:
+            return configured
+
+        if configured == _PUBLISHED_DEFAULT_KEY:
+            logger.warning(
+                "SECRET_KEY is still the value published in the public repository. "
+                "Ignoring it and using the generated key instead. Set your own "
+                "SECRET_KEY in backend/.env to control it."
+            )
+
+        return _load_or_create_secret_key()
 
     @property
     def FLASK_HOST(self):

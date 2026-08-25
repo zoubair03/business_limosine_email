@@ -1,0 +1,411 @@
+/* =========================================================================
+   Business Limousine — Analytics & Quoting
+   -------------------------------------------------------------------------
+   The analytics screens were built as a standalone page with their own
+   palette. Rather than restyle every chart and table by hand, this sheet
+   bridges that page's token names onto the dispatch console's palette, so
+   the components render in the console's brass/ink/paper identity and its
+   Oswald / Inter / IBM Plex Mono type. One place to change, not two.
+
+   Scoped to .analytics-scope so nothing here can reach the manifest,
+   the settings screens or the login modal.
+   ========================================================================= */
+
+.analytics-scope {
+  /* --- surfaces: the console's paper work-surface, not the old page's --- */
+  --surface: var(--card);
+  --surface-2: var(--paper);
+  --border: var(--line);
+  --border-strong: #C7CDD4;
+  --radius: 8px;
+  --shadow: 0 1px 2px rgba(27, 32, 39, 0.04), 0 4px 14px -8px rgba(27, 32, 39, 0.14);
+
+  /* --- ink --- */
+  --ink: var(--text);
+  --ink-2: #4A525C;
+  --muted: var(--text-muted);
+  --page: var(--paper);
+
+  /* --- brass is the console's single signal accent --- */
+  --accent: var(--brass);
+  --accent-hover: var(--brass-strong);
+  --accent-soft: var(--brass-soft);
+  --accent-ink: #FFFFFF;
+
+  /* --- semantic, shared with the console's status colours --- */
+  --good: var(--forest);
+  --success: var(--forest);
+  --warning: var(--important);
+  --serious: #C15A2F;
+  --critical: var(--maroon);
+
+  /* --- categorical series. Drawn from the console's own status palette
+         (steel / brass / forest / maroon / doccle / ebox) so a chart and a
+         status pill in the same screen never disagree about a colour. --- */
+  --s1: var(--steel);   --s1d: #35597A;
+  --s2: var(--brass);   --s2d: var(--brass-strong);
+  --s3: var(--forest);  --s3d: #24563F;
+  --s4: var(--important); --s4d: #B26105;
+  --s5: var(--maroon);  --s5d: #7A3634;
+  --s6: var(--ebox);    --s6d: #3F38C4;
+
+  /* --- sequential ramp for the heatmap, built on steel --- */
+  --seq-100: #DDE6EE; --seq-200: #BACEDF; --seq-300: #93B2CB;
+  --seq-400: #6D95B6; --seq-500: #4E7A9E; --seq-600: #3A6084; --seq-700: #27455F;
+
+  --grid: #E3E7EB;
+  --baseline: #C3CAD2;
+
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
+/* The console owns page scroll; the analytics views scroll inside the main panel. */
+.analytics-scope {
+  padding: 26px 30px 60px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.analytics-scope .tabular,
+.analytics-scope .mono { font-family: var(--font-mono); }
+
+/* Headings take the console's condensed display face. */
+.analytics-scope h2,
+.analytics-scope .card-title,
+.analytics-scope .kpi .value {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+
+/* ===================== components, scoped ===================== */
+
+@keyframes fadein{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;}}
+.analytics-scope .section-head{margin-bottom:16px; display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap;}
+.analytics-scope .section-head h2{font-size:1.375rem; font-weight:600; letter-spacing:-0.01em;}
+.analytics-scope .section-head p{color:var(--ink-2); font-size:13.5px; max-width:60ch;}
+.analytics-scope .section-block{margin-bottom:40px;}
+/* Grid */
+.analytics-scope .grid{display:grid; gap:16px; min-width:0;}
+.analytics-scope .grid-2{grid-template-columns:repeat(2,minmax(0,1fr));}
+.analytics-scope .grid-3{grid-template-columns:repeat(3,minmax(0,1fr));}
+.analytics-scope .grid-4{grid-template-columns:repeat(4,minmax(0,1fr));}
+.analytics-scope .grid-kpi{grid-template-columns:repeat(6,minmax(0,1fr));}
+.analytics-scope .kpi{min-width:0;}
+.analytics-scope .kpi .value{overflow-wrap:break-word;}
+
+@media (max-width:980px){
+.analytics-scope .grid-kpi{grid-template-columns:repeat(3,minmax(0,1fr));}
+.analytics-scope .grid-4{grid-template-columns:repeat(2,minmax(0,1fr));}
+.analytics-scope .grid-2{grid-template-columns:minmax(0,1fr);}
+.analytics-scope .grid-3{grid-template-columns:minmax(0,1fr);}
+}
+
+@media (max-width:560px){
+.analytics-scope .grid-4{grid-template-columns:minmax(0,1fr);}
+}
+
+@media (max-width:640px){
+.analytics-scope .grid-kpi{grid-template-columns:repeat(2,minmax(0,1fr));}
+.analytics-scope .kpi .value{font-size:1.35rem;}
+.analytics-scope .funnel-row{grid-template-columns:104px 1fr 64px; gap:8px;}
+}
+/* Card */
+.analytics-scope .card{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  padding:20px; box-shadow:var(--shadow);
+}
+.analytics-scope .card-head{display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px;}
+.analytics-scope .card-title{font-size:14.5px; font-weight:700;}
+.analytics-scope .card-sub{font-size:12.5px; color:var(--muted); margin-top:2px;}
+.analytics-scope .card-tools{display:flex; gap:6px; flex-shrink:0;}
+/* Segmented control */
+.analytics-scope .segmented{display:flex; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px;}
+.analytics-scope .segmented button{
+  border:none; background:transparent; color:var(--ink-2); font-size:11.5px; font-weight:600;
+  padding:5px 10px; border-radius:6px; cursor:pointer;
+}
+.analytics-scope .segmented button.active{background:var(--surface); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,0.08);}
+/* KPI tile */
+.analytics-scope .kpi{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  padding:16px 18px; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:6px; min-width:0;
+}
+.analytics-scope .kpi .label{font-size:11.5px; color:var(--ink-2); font-weight:600;}
+.analytics-scope .kpi .value{font-size:1.7rem; font-weight:700; letter-spacing:-0.01em; line-height:1.1;}
+.analytics-scope .kpi .delta{font-size:11.5px; font-weight:600; display:flex; align-items:center; gap:4px;}
+.analytics-scope .kpi .delta.up{color:var(--success);}
+.analytics-scope .kpi .delta.down{color:var(--critical);}
+.analytics-scope .kpi .delta.flat{color:var(--muted);}
+.analytics-scope .kpi .sub{font-size:11px; color:var(--muted);}
+/* Callout */
+.analytics-scope .callout{
+  border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px;
+  display:flex; gap:12px; background:var(--surface);
+}
+.analytics-scope .callout.tone-info{border-left:3px solid var(--accent);}
+.analytics-scope .callout.tone-warning{border-left:3px solid var(--warning);}
+.analytics-scope .callout .icon{flex-shrink:0; width:20px; height:20px; margin-top:1px;}
+.analytics-scope .callout h4{font-size:13px; font-weight:700; margin-bottom:4px;}
+.analytics-scope .callout p{font-size:13px; color:var(--ink-2); line-height:1.55;}
+.analytics-scope .callout p + p{margin-top:6px;}
+.analytics-scope .insight{
+  font-size:13px; color:var(--ink-2); line-height:1.6; padding-top:12px; margin-top:12px; border-top:1px dashed var(--border-strong);
+}
+.analytics-scope .insight b{color:var(--ink); font-weight:700;}
+.analytics-scope .insight .accent-text{color:var(--accent); font-weight:700;}
+/* Chips */
+.analytics-scope .chip{
+  display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; padding:3px 8px 3px 6px;
+  border-radius:999px; background:var(--surface-2); border:1px solid var(--border); white-space:nowrap;
+}
+.analytics-scope .chip .dot{width:7px; height:7px; border-radius:50%; flex-shrink:0;}
+.analytics-scope .chip.good .dot{background:var(--good);}
+.analytics-scope .chip.warn .dot{background:var(--warning);}
+.analytics-scope .chip.crit .dot{background:var(--critical);}
+.analytics-scope .chip.neutral .dot{background:var(--muted);}
+/* Tables */
+.analytics-scope .table-wrap{overflow-x:auto; border-radius:10px; border:1px solid var(--border);}
+.analytics-scope table{width:100%; border-collapse:collapse; font-size:13px; min-width:560px;}
+.analytics-scope thead th{
+  text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:0.05em; font-weight:700;
+  color:var(--muted); background:var(--surface-2); padding:10px 12px; white-space:nowrap;
+  position:sticky; top:0;
+}
+.analytics-scope tbody td{padding:9px 12px; border-top:1px solid var(--border); color:var(--ink-2); white-space:nowrap;}
+.analytics-scope tbody td.strong{color:var(--ink); font-weight:600;}
+.analytics-scope tbody tr:hover td{background:var(--surface-2);}
+.analytics-scope td.num,
+.analytics-scope th.num{text-align:right; font-variant-numeric:tabular-nums;}
+/* Legend */
+.analytics-scope .legend{display:flex; flex-wrap:wrap; gap:10px 16px; margin-top:12px;}
+.analytics-scope .legend-item{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-2);}
+.analytics-scope .legend-item .swatch{width:10px; height:10px; border-radius:3px; flex-shrink:0;}
+.analytics-scope .legend-item.muted-swatch .swatch{background-image:repeating-linear-gradient(45deg, var(--muted) 0 2px, transparent 2px 4px);}
+/* Charts */
+.analytics-scope .chart-wrap{position:relative; width:100%;}
+.analytics-scope #chart-heatmap{overflow-x:auto; overflow-y:hidden;}
+.analytics-scope svg.chart{display:block; width:100%; height:auto; overflow:visible;}
+.analytics-scope .bar-rect{cursor:pointer; transition:opacity .1s ease;}
+.analytics-scope .bar-rect:hover,
+.analytics-scope .bar-rect:focus{opacity:0.82;}
+.analytics-scope .bar-label{font-size:11px; fill:var(--ink-2); font-family:var(--font-mono);}
+.analytics-scope .bar-value{font-size:11.5px; font-weight:700; fill:var(--ink); font-family:var(--font-mono); font-variant-numeric:tabular-nums;}
+.analytics-scope .axis-label{font-size:10.5px; fill:var(--muted); font-family:var(--font-mono);}
+.analytics-scope .grid-line{stroke:var(--grid); stroke-width:1;}
+.analytics-scope .baseline{stroke:var(--baseline); stroke-width:1;}
+.analytics-scope .cell-rect{cursor:pointer;}
+.analytics-scope .cell-rect:hover{stroke:var(--ink); stroke-width:1.5;}
+.analytics-scope .cell-text{font-size:10.5px; font-family:var(--font-mono); font-variant-numeric:tabular-nums;}
+/* The chart tooltip is a body-level singleton so it can escape the scroll
+   container — deliberately NOT scoped, and therefore reading the console's own
+   root tokens rather than the bridged ones defined on .analytics-scope. */
+#chart-tooltip{
+  position:fixed; z-index:999; pointer-events:none; background:var(--ink); color:#FFFFFF;
+  border-radius:6px; padding:9px 11px; font-size:12px; line-height:1.45;
+  font-family:var(--font-body); box-shadow:0 8px 24px rgba(27,32,39,0.3);
+  opacity:0; transform:translateY(2px); transition:opacity .1s ease;
+  max-width:250px;
+}
+#chart-tooltip.show{opacity:1;}
+#chart-tooltip .tt-title{font-weight:700; margin-bottom:3px;}
+#chart-tooltip .tt-row{display:flex; align-items:center; justify-content:space-between; gap:14px;}
+#chart-tooltip .tt-row .key{display:flex; align-items:center; gap:6px; color:rgba(255,255,255,0.72);}
+#chart-tooltip .tt-row .line{width:10px; height:2px; border-radius:1px; flex-shrink:0;}
+#chart-tooltip .tt-val{font-weight:700; font-family:var(--font-mono);}
+/* Calculator */
+.analytics-scope .calc{display:grid; grid-template-columns:1.1fr 1fr; gap:24px;}
+
+@media (max-width:820px){
+.analytics-scope .calc{grid-template-columns:1fr;}
+}
+.analytics-scope .field{display:flex; flex-direction:column; gap:6px; margin-bottom:16px;}
+.analytics-scope .field label{font-size:12px; font-weight:700; color:var(--ink-2);}
+.analytics-scope .field select,
+.analytics-scope .field input[type="number"],
+.analytics-scope .field input[type="date"],
+.analytics-scope .field input[type="time"],
+.analytics-scope .field input[type="text"],
+.analytics-scope .field input[type="email"]{
+  font-family:inherit; font-size:14px; padding:9px 11px; border-radius:8px; border:1px solid var(--border-strong);
+  background:var(--surface-2); color:var(--ink); color-scheme: light dark; width:100%;
+}
+.analytics-scope .field select:focus,
+.analytics-scope .field input:focus{outline:2px solid var(--accent); outline-offset:1px;}
+.analytics-scope .rv-btn{
+  font-family:inherit; font-size:13px; font-weight:650; padding:9px 15px; border-radius:8px; cursor:pointer;
+  border:1px solid var(--border-strong); background:var(--surface); color:var(--ink); transition:background .12s, border-color .12s;
+}
+.analytics-scope .rv-btn:hover{background:var(--surface-2); border-color:var(--accent);}
+.analytics-scope .rv-btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+.analytics-scope .rv-btn.primary{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
+.analytics-scope .rv-btn.primary:hover{background:var(--accent-hover); border-color:var(--accent-hover);}
+
+@media (prefers-reduced-motion:reduce){
+.analytics-scope .rv-btn{transition:none;}
+}
+.analytics-scope input[type="range"]{width:100%; accent-color:var(--accent);}
+.analytics-scope .range-row{display:flex; align-items:center; gap:12px;}
+.analytics-scope .range-row .rv{font-variant-numeric:tabular-nums; font-weight:700; min-width:64px; text-align:right;}
+.analytics-scope .result-box{
+  background:var(--surface-2); border:1px solid var(--border); border-radius:12px; padding:20px; text-align:center;
+}
+.analytics-scope .result-box .rlabel{font-size:11.5px; color:var(--ink-2); font-weight:600; text-transform:uppercase; letter-spacing:0.04em;}
+.analytics-scope .result-box .rvalue{font-size:2.6rem; font-weight:700; margin:6px 0 4px; letter-spacing:-0.01em;}
+.analytics-scope .result-box .rformula{font-size:12.5px; color:var(--ink-2); font-variant-numeric:tabular-nums;}
+.analytics-scope .fit-row{display:flex; justify-content:center; margin-top:12px;}
+/* Multi-service quote sheet */
+.analytics-scope .q-addwrap{margin-top:16px; padding-top:14px; border-top:1px dashed var(--border-strong);}
+.analytics-scope .q-addline{display:flex; gap:8px; align-items:center;}
+.analytics-scope .q-addline input{
+  font-family:inherit; font-size:13px; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong);
+  background:var(--surface); color:var(--ink); color-scheme:light dark; min-width:0;
+}
+.analytics-scope .q-addline input:focus{outline:2px solid var(--accent); outline-offset:1px;}
+.analytics-scope .q-addline input[type="text"]{flex:1;}
+.analytics-scope .q-addline input[type="number"]{width:58px; flex:none; text-align:center;}
+.analytics-scope .q-addline .rv-btn{flex:none; white-space:nowrap;}
+.analytics-scope .rv-btn[disabled]{opacity:0.45; cursor:not-allowed;}
+.analytics-scope .rv-btn[disabled]:hover{background:var(--surface); border-color:var(--border-strong);}
+.analytics-scope .rv-btn.primary[disabled]:hover{background:var(--accent); border-color:var(--accent);}
+.analytics-scope .q-toast{font-size:12px; font-weight:650; min-height:17px; margin-top:8px; color:var(--good);}
+.analytics-scope .q-sheet-actions{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
+.analytics-scope .q-sheet-actions select{
+  font-family:inherit; font-size:12.5px; font-weight:650; padding:8px 10px; border-radius:8px;
+  border:1px solid var(--border-strong); background:var(--surface); color:var(--ink); color-scheme:light dark;
+}
+.analytics-scope #table-quote-sheet tfoot td{padding:9px 12px; border-top:1px solid var(--border-strong); white-space:nowrap;}
+.analytics-scope #table-quote-sheet tfoot tr.grand td{border-top:2px solid var(--ink); font-size:15px; font-weight:700; color:var(--ink);}
+.analytics-scope #table-quote-sheet tfoot tr:hover td{background:transparent;}
+.analytics-scope .q-del{
+  border:1px solid var(--border-strong); background:var(--surface-2); color:var(--muted); font-size:14px; line-height:1;
+  width:24px; height:24px; border-radius:6px; cursor:pointer; padding:0;
+}
+.analytics-scope .q-del:hover{color:var(--critical); border-color:var(--critical);}
+.analytics-scope .q-empty{padding:22px 14px; text-align:center; color:var(--muted); font-size:13px;}
+/* Funnel */
+.analytics-scope .funnel{display:flex; flex-direction:column; gap:8px;}
+.analytics-scope .funnel-row{display:grid; grid-template-columns:150px 1fr 100px; align-items:center; gap:12px;}
+.analytics-scope .funnel-bar-track{background:var(--surface-2); border-radius:6px; height:26px; overflow:hidden;}
+.analytics-scope .funnel-bar-fill{height:100%; border-radius:6px;}
+.analytics-scope .funnel-label{font-size:12.5px; color:var(--ink-2); font-weight:600;}
+.analytics-scope .funnel-val{font-size:12.5px; text-align:right; font-weight:700; font-variant-numeric:tabular-nums;}
+/* Meter list */
+.analytics-scope .meter{display:flex; flex-direction:column; gap:5px; margin-bottom:16px;}
+.analytics-scope .meter:last-child{margin-bottom:0;}
+.analytics-scope .meter-top{display:flex; justify-content:space-between; font-size:12.5px;}
+.analytics-scope .meter-top .mname{color:var(--ink-2); font-weight:600;}
+.analytics-scope .meter-top .mval{font-weight:700; font-variant-numeric:tabular-nums;}
+.analytics-scope .meter-track{height:8px; background:var(--surface-2); border-radius:99px; overflow:hidden;}
+.analytics-scope .meter-fill{height:100%; border-radius:99px; background:var(--accent);}
+.analytics-scope .prose{font-size:13.5px; color:var(--ink-2); line-height:1.7; max-width:74ch;}
+.analytics-scope .prose h4{font-size:13.5px; color:var(--ink); font-weight:700; margin:18px 0 6px;}
+.analytics-scope .prose h4:first-child{margin-top:0;}
+.analytics-scope .prose ul{margin:6px 0; padding-left:20px;}
+.analytics-scope .prose li{margin-bottom:4px;}
+.analytics-scope .text-toggle{
+  border:1px solid var(--border-strong); background:var(--surface-2); color:var(--ink-2); font-size:11px; font-weight:700;
+  padding:5px 10px; border-radius:7px; cursor:pointer;
+}
+.analytics-scope .text-toggle:hover{color:var(--ink);}
+.analytics-scope .hidden{display:none !important;}
+
+/* ===================== console integration ===================== */
+
+/* In-screen tab strip. Mirrors the sidebar's active-item treatment — a brass
+   underline — so "where am I" reads the same at both levels of navigation. */
+.analytics-scope .analytics-tabs{
+  display:flex; gap:2px; flex-wrap:wrap; margin:-4px 0 24px;
+  border-bottom:1px solid var(--line);
+}
+.analytics-scope .atab{
+  appearance:none; border:none; background:transparent; cursor:pointer;
+  font-family:var(--font-display); font-size:12.5px; font-weight:500;
+  letter-spacing:0.04em; text-transform:uppercase;
+  color:var(--text-muted); padding:9px 14px 10px;
+  border-bottom:2px solid transparent; margin-bottom:-1px;
+  transition:color .12s, border-color .12s;
+}
+.analytics-scope .atab:hover{ color:var(--text); }
+.analytics-scope .atab.active{ color:var(--brass-strong); border-bottom-color:var(--brass); }
+.analytics-scope .atab:focus-visible{ outline:2px solid var(--brass); outline-offset:-2px; border-radius:3px; }
+
+.analytics-scope .apanel{ display:none; }
+.analytics-scope .apanel.active{ display:block; animation:fadein .2s ease; }
+
+/* Shown when the server has no real export and served the fabricated sample. */
+.analytics-scope .sample-banner{
+  display:flex; gap:8px; align-items:baseline;
+  background:var(--important-soft); border:1px solid rgba(217,119,6,0.35);
+  border-left:3px solid var(--important); border-radius:var(--radius-sm);
+  padding:11px 14px; margin-bottom:20px; font-size:12.5px; line-height:1.55;
+  color:#7A4405;
+}
+.analytics-scope .sample-banner strong{ color:#5E3404; }
+
+.analytics-scope .analytics-error{
+  background:var(--card); border:1px solid var(--line);
+  border-left:3px solid var(--maroon); border-radius:var(--radius);
+  padding:20px 22px; margin-bottom:20px; max-width:62ch;
+}
+.analytics-scope .analytics-error-title{
+  font-family:var(--font-display); font-size:15px; font-weight:600;
+  color:var(--maroon); margin-bottom:6px;
+}
+.analytics-scope .analytics-error p{ font-size:13px; color:var(--text-muted); line-height:1.6; margin:0 0 6px; }
+.analytics-scope .analytics-error code{
+  font-family:var(--font-mono); font-size:11.5px;
+  background:var(--paper); border:1px solid var(--line);
+  border-radius:3px; padding:1px 5px;
+}
+
+/* The console's buttons, applied to the analytics controls so a button looks the
+   same whichever screen it is on. */
+.analytics-scope .rv-btn{
+  font-family:var(--font-body); font-size:12.5px; font-weight:600;
+  padding:8px 14px; border-radius:var(--radius-sm); cursor:pointer;
+  border:1px solid var(--line); background:var(--card); color:var(--text);
+  transition:background .12s, border-color .12s;
+}
+.analytics-scope .rv-btn:hover{ background:var(--paper); border-color:var(--brass); }
+.analytics-scope .rv-btn:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
+.analytics-scope .rv-btn.primary{ background:var(--brass); border-color:var(--brass); color:#fff; }
+.analytics-scope .rv-btn.primary:hover{ background:var(--brass-strong); border-color:var(--brass-strong); }
+
+/* Section spacing: the old page had a page-level h2 per panel; the console's
+   topbar carries the screen name instead, so the first block sits flush. */
+.analytics-scope .section-block:first-child{ margin-top:0; }
+.analytics-scope .apanel > .section-block:last-child{ margin-bottom:0; }
+
+/* Coverage strip — the "how complete is this data" facts that used to sit inside
+   long callouts. Kept, because a drivers table that silently covers 60% of jobs,
+   or an hours report where most shifts have no end time, is misleading without
+   them. Compressed to a stat row so they read at a glance instead of as an essay. */
+.analytics-scope .coverage-strip{
+  display:flex; flex-wrap:wrap; gap:0;
+  background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+  margin-bottom:16px; overflow:hidden;
+}
+.analytics-scope .cov-item{
+  display:flex; flex-direction:column; gap:3px;
+  padding:11px 18px; min-width:0; flex:1 1 auto;
+  border-right:1px solid var(--line);
+}
+.analytics-scope .cov-item:last-child{ border-right:none; }
+.analytics-scope .cov-label{
+  font-size:10px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase;
+  color:var(--text-muted); white-space:nowrap;
+}
+.analytics-scope .cov-value{
+  font-family:var(--font-mono); font-size:13px; font-weight:600; color:var(--text);
+}
+.analytics-scope .cov-value.warn{ color:var(--important); }
+.analytics-scope .cov-note{ font-size:12px; color:var(--text-muted); line-height:1.5; }
+
+/* The "possibly the same person" list — a judgement call left to a human. */
+.analytics-scope #dh-dupes:not(:empty){
+  background:var(--important-soft); border:1px solid rgba(217,119,6,0.3);
+  border-radius:var(--radius-sm); padding:12px 14px; margin-top:12px;
+}

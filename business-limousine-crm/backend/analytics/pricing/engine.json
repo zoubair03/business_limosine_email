@@ -1,0 +1,256 @@
+{
+ "price_index": {
+  "2022": 0.984,
+  "2023": 0.984,
+  "2024": 1.133,
+  "2025": 1.182,
+  "2026": 1.2
+ },
+ "index_base_year": 2026,
+ "transfer_curves": {
+  "Sedan (E-Class)": {
+   "km": [
+    2.9,
+    5.3,
+    13.8,
+    15.9,
+    25.4,
+    41.0,
+    58.6,
+    67.0,
+    98.5,
+    113.0,
+    253.6
+   ],
+   "price": [
+    87,
+    90,
+    92,
+    102,
+    102,
+    154,
+    154,
+    183,
+    298,
+    305,
+    726
+   ]
+  },
+  "Van (V-Class)": {
+   "km": [
+    0.9,
+    5.9,
+    13.8,
+    16.0,
+    25.4,
+    41.0,
+    52.1,
+    67.0,
+    99.5,
+    111.8,
+    284.5
+   ],
+   "price": [
+    71,
+    92,
+    98,
+    112,
+    112,
+    182,
+    182,
+    183,
+    327,
+    343,
+    794
+   ]
+  },
+  "Luxury Sedan (S-Class)": {
+   "km": [
+    2.9,
+    6.2,
+    13.8,
+    15.9,
+    42.8
+   ],
+   "price": [
+    100,
+    100,
+    103,
+    103,
+    238
+   ]
+  },
+  "Minibus": {
+   "km": [
+    3.2,
+    7.1,
+    13.8,
+    15.9,
+    23.3,
+    38.6,
+    52.1,
+    67.0,
+    100.3,
+    115.7,
+    193.7
+   ],
+   "price": [
+    212,
+    241,
+    241,
+    241,
+    344,
+    404,
+    404,
+    404,
+    477,
+    502,
+    969
+   ]
+  }
+ },
+ "disposal_fits": {
+  "Sedan (E-Class)": {
+   "base": 43.79,
+   "per_hour": 66.37,
+   "per_km": 0.0,
+   "min_hours": 2.58,
+   "min_charge": 215.26
+  },
+  "Van (V-Class)": {
+   "base": 46.05,
+   "per_hour": 71.58,
+   "per_km": 0.48,
+   "min_hours": 1.25,
+   "min_charge": 135.53
+  },
+  "Luxury Sedan (S-Class)": {
+   "base": 88.36,
+   "per_hour": 73.07,
+   "per_km": 0.0,
+   "min_hours": 2.28,
+   "min_charge": 255.21
+  },
+  "Minibus": {
+   "base": 150.01,
+   "per_hour": 85.26,
+   "per_km": 1.33,
+   "min_hours": 1.12,
+   "min_charge": 245.92
+  }
+ },
+ "transfer_accuracy": {
+  "Sedan (E-Class)": {
+   "n": 1286,
+   "mae": 23,
+   "med_ae": 11,
+   "w50": 91.2,
+   "wok": 91.5
+  },
+  "Van (V-Class)": {
+   "n": 1416,
+   "mae": 43,
+   "med_ae": 8,
+   "w50": 83.6,
+   "wok": 84.0
+  },
+  "Luxury Sedan (S-Class)": {
+   "n": 125,
+   "mae": 144,
+   "med_ae": 25,
+   "w50": 60.0,
+   "wok": 60.0
+  },
+  "Minibus": {
+   "n": 529,
+   "mae": 98,
+   "med_ae": 39,
+   "w50": 57.3,
+   "wok": 57.7
+  }
+ },
+ "disposal_accuracy": {
+  "Sedan (E-Class)": {
+   "n": 152,
+   "mae": 100,
+   "med_ae": 53,
+   "w50": 44.1,
+   "wok": 56.6
+  },
+  "Van (V-Class)": {
+   "n": 883,
+   "mae": 116,
+   "med_ae": 55,
+   "w50": 46.7,
+   "wok": 54.9
+  },
+  "Luxury Sedan (S-Class)": {
+   "n": 125,
+   "mae": 163,
+   "med_ae": 136,
+   "w50": 14.4,
+   "wok": 22.4
+  },
+  "Minibus": {
+   "n": 621,
+   "mae": 162,
+   "med_ae": 75,
+   "w50": 25.0,
+   "wok": 43.2
+  }
+ },
+ "quote_bands": {
+  "transfer|Sedan (E-Class)": [
+   0.93,
+   1.12
+  ],
+  "transfer|Van (V-Class)": [
+   0.96,
+   1.13
+  ],
+  "transfer|Luxury Sedan (S-Class)": [
+   0.77,
+   1.13
+  ],
+  "transfer|Minibus": [
+   0.87,
+   1.18
+  ],
+  "disposal|Sedan (E-Class)": [
+   0.92,
+   1.14
+  ],
+  "disposal|Van (V-Class)": [
+   0.92,
+   1.12
+  ],
+  "disposal|Luxury Sedan (S-Class)": [
+   0.84,
+   1.15
+  ],
+  "disposal|Minibus": [
+   0.89,
+   1.14
+  ]
+ },
+ "tier_multipliers": {
+  "net": 0.8,
+  "standard": 1.0,
+  "premium": 1.26
+ },
+ "road_factor": {
+  "slope": 1.1736,
+  "intercept": 0.87,
+  "mape_pct": 5.8,
+  "n_routes": 25
+ },
+ "coverage": {
+  "clean_rows": 8032,
+  "transfer_rows": 4275,
+  "disposal_rows": 2082,
+  "transfer_std": 3377,
+  "disposal_std": 1788,
+  "geo_pct": 90.3,
+  "clients_profiled": 76
+ }
+}

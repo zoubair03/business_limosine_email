@@ -1,31 +1,57 @@
-# Business Limousine — AI Email CRM
+# Business Limousine — Dispatch Console
 
-Turns the company's shared inbox into a lightweight CRM: it pulls mail over
-IMAP, classifies each message with Google Gemini (`NEW_REQUEST` /
-`DISCUSSION` / `OTHER`), extracts client + trip details, groups everything
-into per-client conversations in SQLite, and shows it all in a dashboard
-where staff can change status, leave internal notes, and reply — replies
-go out over SMTP, threaded to the original email.
+One authenticated web app for the office, in two halves that share a shell:
+
+**Mail CRM.** Pulls the shared inbox over IMAP, classifies each message with
+Google Gemini (`NEW_REQUEST` / `DISCUSSION` / `OTHER`), extracts client and
+trip details, groups everything into per-client conversations in SQLite, and
+lets staff change status, leave internal notes and reply — replies go out over
+SMTP, threaded to the original email.
+
+**Fleet analytics & quoting.** Revenue, fleet, client, chauffeur and operations
+reporting built from Waynium mission exports, plus a quote calculator fitted on
+8,032 executed bookings and a Google-review request composer. Reached from the
+**Intelligence** section of the sidebar.
 
 ```
 business-limousine-crm/
 ├── backend/
 │   ├── app.py            Flask REST API + serves the frontend
-│   ├── config.py         Reads backend/.env
+│   ├── auth.py           Password hashing, sessions, role decorators
+│   ├── config.py         Reads backend/.env; manages the session key
 │   ├── database.py       SQLite schema + connection helper
-│   ├── models.py         Data access layer (conversations/messages/notes)
+│   ├── models.py         Data access layer (conversations/messages/notes/users)
 │   ├── email_parser.py   MIME parsing, HTML→text, contact-form field extraction
 │   ├── ai_classifier.py  Gemini API call (classify + extract)
 │   ├── email_fetcher.py  IMAP sync: fetch → parse → classify → store
 │   ├── email_sender.py   SMTP reply sending
 │   ├── sync_worker.py    Standalone polling loop
+│   ├── analytics/
+│   │   ├── pricing/              Fits the price model from a Waynium export
+│   │   ├── make_sample.py        Builds the fabricated demo dataset
+│   │   └── dashboard_data.json   Generated. Gitignored — real client data.
 │   ├── requirements.txt
 │   └── .env.example
 └── frontend/
     ├── index.html
-    ├── styles.css
-    └── app.js             Vanilla JS — no build step
+    ├── styles.css        Dispatch console shell
+    ├── app.js            Shell, manifest, settings — vanilla JS, no build step
+    ├── analytics.css     Bridges the analytics components onto the shell palette
+    └── analytics.js      Charts, quote calculator, review composer
 ```
+
+## Accounts
+
+The first run seeds two accounts. **Change both passwords immediately** — they
+are published in this README and in `models.ensure_default_admin`.
+
+| Email | Password | Role |
+|---|---|---|
+| `admin@businesslimousine.com` | `admin123` | ADMIN |
+| `dispatcher@businesslimousine.com` | `dispatch123` | DISPATCHER |
+
+Every `/api/*` route except `POST /api/auth/login` requires a session;
+user management additionally requires the ADMIN role.
 
 ## 1. Install
 
@@ -136,22 +162,89 @@ than `python app.py`'s dev server for anything beyond local testing.
 | POST   | `/api/conversations/<id>/notes`          | Add an internal note                  |
 | POST   | `/api/conversations/<id>/reply`          | Send a threaded email reply           |
 | POST   | `/api/sync`                              | Trigger an on-demand IMAP sync        |
+| POST   | `/api/auth/login` / `logout` / `me`      | Session authentication                |
+| GET    | `/api/analytics`                         | Analytics payload (see below)         |
 
-## 8. Known limitations / good next steps
+## 8. Fleet analytics & quoting
+
+The analytics do **not** come from the CRM mailbox database. They are fitted
+from Waynium mission exports by `backend/analytics/pricing`, which writes
+`backend/analytics/dashboard_data.json`; `GET /api/analytics` serves that file
+to logged-in users.
+
+### Refreshing the numbers
+
+```bash
+cd backend/analytics
+# drop the new export_*.csv in this folder first — the newest is picked up
+cd pricing
+python features.py             # clean + geocode every booking  -> feat.pkl
+python engine.py               # fit the price model            -> engine.json
+python export_payload.py       # pricing + comparables          -> ../dashboard_data.json
+python reviews_payload.py      # review-request ride list       -> ../dashboard_data.json
+python driver_hours_payload.py # chauffeur hours + shifts       -> ../dashboard_data.json
+```
+
+Restart the app afterwards, or just reload the page — the payload is cached on
+file mtime, so a rebuilt file is picked up automatically.
+
+`backend/analytics/pricing/README.md` documents how the model is fitted and,
+importantly, how far to trust each mode.
+
+### The demo dataset
+
+`dashboard_data.json` and `export_*.csv` are **gitignored**: they name clients
+alongside revenue, chauffeurs alongside earnings, and passengers alongside
+pickup addresses. This repository is public.
+
+So that a fresh clone still runs, `dashboard_data.sample.json` is committed — a
+shape-identical copy with every identity replaced by a fabricated one and every
+figure jittered. The API falls back to it when the real file is absent and sets
+`is_sample: true`, which makes the UI show a "Demonstration data" banner rather
+than passing invented revenue off as real.
+
+Rebuild it with `python backend/analytics/make_sample.py`. That script refuses
+to write if any real identity survives anonymisation, so a new name-carrying
+field added upstream fails the build instead of being published quietly.
+
+## 9. Security notes
+
+**The session key.** `Config.SECRET_KEY` used to fall back to a constant
+committed to this public repository — knowing it is enough to forge a
+logged-in admin cookie, which made the login screen decorative. The app now
+generates a random key into `backend/.secret_key` (gitignored) on first run,
+and refuses that published constant if it is still set. Set your own
+`SECRET_KEY` in `backend/.env` for a multi-server deployment.
+
+**Removing the exposed uploads from history.** `business-limousine-crm/uploads/`
+held 24 client attachments — invoices, quotes and a RIB with bank details — that
+were committed before `.gitignore` covered them, and are therefore still public
+in this repository's history. They have now been untracked, which stops new ones
+being added but does **not** remove the existing ones. To purge them:
+
+```bash
+pip install git-filter-repo
+git filter-repo --path business-limousine-crm/uploads --invert-paths --force
+git push origin --force --all
+git push origin --force --tags
+```
+
+This rewrites history: everyone with a clone must re-clone. Anything already
+public should be treated as disclosed regardless — rotate the bank details on
+that RIB rather than assuming the purge undoes the exposure. Consider making
+the repository private.
+
+**Default accounts.** `admin123` / `dispatch123` are published above. Change
+them on first login.
+
+## 10. Known limitations / good next steps
 
 - Conversation matching is by email address only; a client writing from a
   second address starts a second conversation.
 - Attachments are currently skipped, not stored.
-- The dev Flask server (`app.run`) is single-process — fine for staff use
-  on a LAN, not for public internet exposure without a real WSGI server,
-  HTTPS, and authentication (there is currently no login screen at all —
-  add one before deploying anywhere reachable outside the office).
+- The dev Flask server (`app.run`) is single-process — fine for staff use on a
+  LAN, not for public internet exposure without a real WSGI server and HTTPS.
 - `sync_worker.py` polls; moving to IMAP `IDLE` would give near-instant
   updates instead of waiting for the next interval.
-
-
-cd c:\Users\zoubair\Desktop\work\business-limousine-crm\business-limousine-crm\backend
-python app.py
-(And in a second terminal if you want automatic polling every 60 seconds):
-cd c:\Users\zoubair\Desktop\work\business-limousine-crm\business-limousine-crm\backend
-python sync_worker.py
+- Analytics are read-only and refresh by re-running the pipeline; there is no
+  in-app upload for a new Waynium export yet.

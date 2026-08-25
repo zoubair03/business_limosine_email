@@ -4,4 +4,22 @@
 __pycache__
 *.pyc
 *.db
-uploads
+
+# Client attachments pulled off the mailbox. Never commit these — they have held
+# invoices and bank details (RIB). Files already in the history were untracked on
+# the analytics merge; see README "Removing the exposed uploads from history".
+uploads/
+
+# --- Analytics data -------------------------------------------------------
+# Real business data: named clients with revenue, chauffeur earnings, and
+# passenger travel records. This repository is public — none of it belongs in
+# git. Regenerate locally with backend/analytics/pricing (see its README).
+backend/analytics/dashboard_data.json
+backend/analytics/export_*.csv
+backend/analytics/pricing/feat.pkl
+
+# The checked-in sample is fabricated and safe to track.
+!backend/analytics/dashboard_data.sample.json
+
+# Instance session key, generated on first run. Never commit.
+backend/.secret_key

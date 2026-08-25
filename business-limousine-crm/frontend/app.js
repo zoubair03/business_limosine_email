@@ -329,76 +329,81 @@ function renderStatusNav() {
 // View switching (conversations manifest vs. settings screens)
 // -------------------------------------------------------------------------
 
+/* Every screen other than the manifest, in one table. Adding a screen means adding
+   a row here plus a <section id="...-view"> — no new branches. `onShow` runs each
+   time the screen is opened; it must be safe to call repeatedly. */
+const VIEWS = {
+  "whatsapp-settings": {
+    section: "whatsapp-settings-view",
+    navBtn: "nav-whatsapp-btn",
+    eyebrow: "AUTOMATION & ALERTS",
+    title: "Telegram & Dispatch Alerts",
+    onShow: () => loadWhatsAppSettings(),
+  },
+  "email-settings": {
+    section: "email-settings-view",
+    navBtn: "nav-email-settings-btn",
+    eyebrow: "SETTINGS & IDENTITY",
+    title: "Email & Signature Settings",
+    onShow: () => loadEmailSettings(),
+  },
+  "users-settings": {
+    section: "users-settings-view",
+    navBtn: "nav-users-settings",
+    eyebrow: "TEAM & ACCESS",
+    title: "Team & User Management",
+    onShow: () => loadUsers(),
+  },
+  analytics: {
+    section: "analytics-view",
+    navBtn: "nav-analytics",
+    eyebrow: "FLEET INTELLIGENCE",
+    title: "Fleet Analytics",
+    onShow: () => openAnalyticsScreen("analytics"),
+  },
+  quotes: {
+    section: "quotes-view",
+    navBtn: "nav-quotes",
+    eyebrow: "QUOTING & RATES",
+    title: "Quoting & Rates",
+    onShow: () => openAnalyticsScreen("quotes"),
+  },
+  reviews: {
+    section: "reviews-view",
+    navBtn: "nav-reviews",
+    eyebrow: "CLIENT FEEDBACK",
+    title: "Review Requests",
+    onShow: () => openAnalyticsScreen("reviews"),
+  },
+};
+
 function switchView(view) {
   state.view = view;
 
   const convContent = el("conversations-content");
-  const waView = el("whatsapp-settings-view");
-  const emailView = el("email-settings-view");
-  const usersView = el("users-settings-view");
-
-  const waNavBtn = el("nav-whatsapp-btn");
-  const emailNavBtn = el("nav-email-settings-btn");
-  const usersNavBtn = el("nav-users-settings");
-
   const searchWrap = el("topbar-search-wrap");
   const topbarActions = el("topbar-actions");
   const eyebrowEl = el("topbar-eyebrow");
   const titleEl = el("panel-title");
 
-  // Deactivate all sidebar items first
-  document.querySelectorAll("#status-nav .status-nav-item, .system-nav .status-nav-item").forEach((b) => {
-    b.classList.remove("active");
+  document
+    .querySelectorAll("#status-nav .status-nav-item, .system-nav .status-nav-item")
+    .forEach((b) => b.classList.remove("active"));
+
+  // Hide every registered screen, then reveal the one asked for.
+  Object.values(VIEWS).forEach((cfg) => {
+    const sec = el(cfg.section);
+    if (sec) sec.hidden = true;
   });
 
-  if (view === "whatsapp-settings") {
-    if (convContent) convContent.hidden = true;
-    if (emailView) emailView.hidden = true;
-    if (usersView) usersView.hidden = true;
-    if (waView) waView.hidden = false;
-    if (waNavBtn) waNavBtn.classList.add("active");
-    document.querySelectorAll("#status-nav .status-nav-item").forEach((b) => b.classList.remove("active"));
+  const cfg = VIEWS[view];
 
-    if (searchWrap) searchWrap.hidden = true;
-    if (topbarActions) topbarActions.hidden = false;
-    if (eyebrowEl) eyebrowEl.textContent = "AUTOMATION & ALERTS";
-    if (titleEl) titleEl.textContent = "Telegram & Dispatch Alerts";
-
-    loadWhatsAppSettings();
-  } else if (view === "email-settings") {
-    if (convContent) convContent.hidden = true;
-    if (waView) waView.hidden = true;
-    if (usersView) usersView.hidden = true;
-    if (emailView) emailView.hidden = false;
-    if (emailNavBtn) emailNavBtn.classList.add("active");
-
-    if (searchWrap) searchWrap.hidden = true;
-    if (topbarActions) topbarActions.hidden = false;
-    if (eyebrowEl) eyebrowEl.textContent = "SETTINGS & IDENTITY";
-    if (titleEl) titleEl.textContent = "Email & Signature Settings";
-
-    loadEmailSettings();
-  } else if (view === "users-settings") {
-    if (convContent) convContent.hidden = true;
-    if (waView) waView.hidden = true;
-    if (emailView) emailView.hidden = true;
-    if (usersView) usersView.hidden = false;
-    if (usersNavBtn) usersNavBtn.classList.add("active");
-
-    if (searchWrap) searchWrap.hidden = true;
-    if (topbarActions) topbarActions.hidden = false;
-    if (eyebrowEl) eyebrowEl.textContent = "TEAM & ACCESS";
-    if (titleEl) titleEl.textContent = "Team & User Management";
-
-    loadUsers();
-  } else {
+  if (!cfg) {
+    // The manifest — the default screen, and the only one with search.
     if (convContent) convContent.hidden = false;
-    if (waView) waView.hidden = true;
-    if (emailView) emailView.hidden = true;
-    if (usersView) usersView.hidden = true;
-
-    document.querySelectorAll("#status-nav .status-nav-item").forEach((b) => b.classList.remove("active"));
-    const activeStatusBtn = document.querySelector(`#status-nav .status-nav-item[data-status="${state.status}"]`);
+    const activeStatusBtn = document.querySelector(
+      `#status-nav .status-nav-item[data-status="${state.status}"]`
+    );
     if (activeStatusBtn) activeStatusBtn.classList.add("active");
 
     if (searchWrap) searchWrap.hidden = false;
@@ -407,7 +412,111 @@ function switchView(view) {
     const meta = getStatusMeta(state.status);
     if (eyebrowEl) eyebrowEl.textContent = meta.eyebrow;
     if (titleEl) titleEl.textContent = meta.label;
+    return;
   }
+
+  if (convContent) convContent.hidden = true;
+  const sec = el(cfg.section);
+  if (sec) sec.hidden = false;
+  const navBtn = el(cfg.navBtn);
+  if (navBtn) navBtn.classList.add("active");
+
+  if (searchWrap) searchWrap.hidden = true;
+  if (topbarActions) topbarActions.hidden = false;
+  if (eyebrowEl) eyebrowEl.textContent = cfg.eyebrow;
+  if (titleEl) titleEl.textContent = cfg.title;
+
+  if (cfg.onShow) cfg.onShow();
+}
+
+// -------------------------------------------------------------------------
+// Analytics screens
+// -------------------------------------------------------------------------
+
+/* Charts size themselves off their container, which measures 0 while the section
+   is hidden — so the data is fetched here but nothing is drawn until after the
+   section is visible, and each panel is drawn the first time it is opened. */
+async function openAnalyticsScreen(screen) {
+  const section = el(`${screen}-view`);
+  if (!section) return;
+
+  try {
+    await Analytics.load();
+  } catch (err) {
+    renderAnalyticsError(section, err);
+    return;
+  }
+
+  showSampleBannerIfNeeded();
+
+  const active = section.querySelector(".apanel.active") || section.querySelector(".apanel");
+  if (active) {
+    active.classList.add("active");
+    Analytics.show(active.id.replace("apanel-", ""));
+  }
+}
+
+function renderAnalyticsError(section, err) {
+  let box = section.querySelector(".analytics-error");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "analytics-error";
+    section.prepend(box);
+  }
+  const isMissing = err && err.status === 503;
+  box.innerHTML = `
+    <div class="analytics-error-title">${isMissing ? "No analytics data on this server" : "Analytics unavailable"}</div>
+    <p>${escapeHtml(err && err.message ? err.message : "Could not reach the analytics endpoint.")}</p>
+    ${isMissing ? `<p class="analytics-error-hint">Build it with <code>backend/analytics/pricing</code>, or generate a demo dataset with <code>python backend/analytics/make_sample.py</code>.</p>` : ""}
+  `;
+}
+
+/* The server falls back to a fabricated dataset when the real export is absent.
+   Say so plainly — invented revenue presented as real is worse than no dashboard. */
+function showSampleBannerIfNeeded() {
+  if (!Analytics.isSample()) return;
+  document.querySelectorAll(".analytics-scope").forEach((scope) => {
+    if (scope.querySelector(".sample-banner")) return;
+    const b = document.createElement("div");
+    b.className = "sample-banner";
+    b.innerHTML =
+      "<strong>Demonstration data.</strong> This server has no Waynium export loaded, " +
+      "so every figure below is fabricated — names, revenue and trips alike. " +
+      "Run the pricing pipeline to see the real book.";
+    scope.prepend(b);
+  });
+}
+
+/* Any sidebar button carrying data-view switches to that screen. The three older
+   settings buttons keep their own handlers further down; this covers everything
+   registered in VIEWS without needing a handler each. */
+function wireViewNav() {
+  document.querySelectorAll(".system-nav .status-nav-item[data-view]").forEach((btn) => {
+    const view = btn.dataset.view;
+    if (!VIEWS[view] || btn.dataset.viewWired) return;
+    btn.dataset.viewWired = "1";
+    btn.addEventListener("click", () => switchView(view));
+  });
+}
+
+/* In-screen tab strip (Overview / Revenue / Fleet / …). */
+function setupAnalyticsTabs() {
+  document.addEventListener("click", (e) => {
+    const tab = e.target.closest(".atab");
+    if (!tab) return;
+    const section = tab.closest(".analytics-scope");
+    if (!section) return;
+
+    section.querySelectorAll(".atab").forEach((b) => b.classList.remove("active"));
+    tab.classList.add("active");
+
+    const target = tab.dataset.apanel;
+    section.querySelectorAll(".apanel").forEach((p) => {
+      p.classList.toggle("active", p.id === `apanel-${target}`);
+    });
+
+    Analytics.show(target);
+  });
 }
 
 // -------------------------------------------------------------------------
@@ -2730,12 +2839,7 @@ function wireEvents() {
     }
   });
 
-  const navWaBtn = el("nav-whatsapp-btn") || el("whatsapp-settings-nav-btn");
-  if (navWaBtn) {
-    navWaBtn.addEventListener("click", () => {
-      switchView("whatsapp-settings");
-    });
-  }
+  // Sidebar navigation is wired generically from data-view — see wireViewNav().
 
   const backManifestBtn = el("btn-back-to-manifest");
   if (backManifestBtn) {
@@ -2847,21 +2951,7 @@ function wireEvents() {
     });
   }
 
-  // Email & Signature Settings Navigation
-  const navEmailBtn = el("nav-email-settings-btn");
-  if (navEmailBtn) {
-    navEmailBtn.addEventListener("click", () => {
-      switchView("email-settings");
-    });
-  }
-
-  // Team & User Management Navigation
-  const navUsersBtn = el("nav-users-settings");
-  if (navUsersBtn) {
-    navUsersBtn.addEventListener("click", () => {
-      switchView("users-settings");
-    });
-  }
+  // Email/Users navigation is wired generically from data-view — see wireViewNav().
 
   // User Management Toolbar & Modal controls
   const btnOpenAddUser = el("btn-open-add-user-modal");
@@ -2971,6 +3061,8 @@ function wireEvents() {
 
 (async function init() {
   wireEvents();
+  setupAnalyticsTabs();
+  wireViewNav();
   const authenticated = await checkAuth();
   if (authenticated) {
     await loadConversations();

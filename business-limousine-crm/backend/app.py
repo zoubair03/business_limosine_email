@@ -153,6 +153,60 @@ def api_upload():
 
 
 # --------------------------------------------------------------------------
+# Analytics API
+#
+# The analytics come from Waynium CSV exports, not from the CRM mailbox database —
+# a separate data source entirely. `backend/analytics/pricing` fits the model and
+# writes dashboard_data.json; this endpoint serves it.
+#
+# That file is gitignored: it names clients with revenue, chauffeurs with earnings
+# and passengers with pickup addresses, and this repository is public. When it is
+# absent we fall back to the fabricated dashboard_data.sample.json so a fresh clone
+# still starts, and flag `is_sample` so the UI can say so rather than presenting
+# invented numbers as real ones.
+# --------------------------------------------------------------------------
+
+ANALYTICS_DIR = PROJECT_ROOT / "backend" / "analytics"
+ANALYTICS_FILE = ANALYTICS_DIR / "dashboard_data.json"
+ANALYTICS_SAMPLE = ANALYTICS_DIR / "dashboard_data.sample.json"
+
+_analytics_cache = {"mtime": None, "path": None, "payload": None}
+
+
+def _load_analytics():
+    """Returns (payload, is_sample). Cached on file mtime — the JSON is ~210 KB and
+    only changes when someone re-runs the pricing pipeline."""
+    path = ANALYTICS_FILE if ANALYTICS_FILE.exists() else ANALYTICS_SAMPLE
+    if not path.exists():
+        return None, False
+
+    mtime = path.stat().st_mtime
+    if _analytics_cache["mtime"] == mtime and _analytics_cache["path"] == str(path):
+        return _analytics_cache["payload"], path == ANALYTICS_SAMPLE
+
+    with open(path, encoding="utf-8") as fh:
+        payload = json.load(fh)
+
+    _analytics_cache.update({"mtime": mtime, "path": str(path), "payload": payload})
+    return payload, path == ANALYTICS_SAMPLE
+
+
+@app.get("/api/analytics")
+@login_required
+def api_analytics():
+    payload, is_sample = _load_analytics()
+    if payload is None:
+        return jsonify({
+            "error": "No analytics data on this server.",
+            "detail": "Run backend/analytics/pricing to build dashboard_data.json, "
+                      "or backend/analytics/make_sample.py for a demo dataset.",
+            "code": "NO_ANALYTICS_DATA",
+        }), 503
+
+    return jsonify({"is_sample": is_sample, "data": payload})
+
+
+# --------------------------------------------------------------------------
 # Authentication & Users API
 # --------------------------------------------------------------------------
 
