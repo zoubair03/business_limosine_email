@@ -151,7 +151,7 @@
             <h2 class="settings-title">Email Signature & Identity Settings</h2>
             <p class="settings-subtitle">Customize the default multilingual signature, HTML branding, dispatcher contact info, and default CC recipients.</p>
           </div>
-          <div class="twilio-badge" style="background: rgba(197, 160, 89, 0.15); border-color: rgba(197, 160, 89, 0.35); color: var(--brass-light);">
+          <div class="twilio-badge" style="background: rgba(197, 160, 89, 0.15); border-color: rgba(197, 160, 89, 0.4); color: var(--brass-strong);">
             <span class="status-indicator-dot" style="background: var(--brass);"></span>
             <span>Official Identity Active</span>
           </div>
@@ -186,7 +186,7 @@
               <div class="settings-field-group">
                 <label class="field-label" for="setting-default-cc">Default CC Address(es)</label>
                 <input type="text" id="setting-default-cc" class="settings-input" placeholder="info@business-limousine.be, additional@company.com" value="info@business-limousine.be" />
-                <div class="field-hint">💡 Pre-filled in every reply automatically. Separate multiple addresses with commas.</div>
+                <div class="field-hint"><svg class="ui-ico" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="8"></line></svg> Pre-filled in every reply automatically. Separate multiple addresses with commas.</div>
               </div>
             </div>
 
@@ -198,7 +198,7 @@
                   <div class="settings-card-desc">Edit your plain text and rich HTML email signatures.</div>
                 </div>
                 <button type="button" class="btn-secondary" id="btn-reset-signature" title="Reset to official Business Limousine signature" style="font-size: 11.5px; padding: 5px 10px;">
-                  ↺ Reset Official Default
+                  <svg class="ui-ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg> Reset to default
                 </button>
               </div>
               
@@ -217,7 +217,7 @@
 
               <div style="margin-top: 14px; display: flex; justify-content: flex-end; gap: 10px;">
                 <button type="button" class="btn-primary" id="btn-save-email-settings">
-                  <span id="save-email-settings-btn-text">💾 Save Email Settings</span>
+                  <span id="save-email-settings-btn-text"><svg class="ui-ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> Save settings</span>
                 </button>
               </div>
               <div class="test-feedback" id="email-settings-feedback" hidden></div>
@@ -231,7 +231,7 @@
             <div class="settings-card">
               <div class="settings-card-head">
                 <div>
-                  <div class="settings-card-title">📱 Live Signature Rendering Preview</div>
+                  <div class="settings-card-title"><svg class="ui-ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg> Live signature preview</div>
                   <div class="settings-card-desc">How your signature appears to clients in Outlook, Apple Mail & Gmail.</div>
                 </div>
               </div>
@@ -325,7 +325,7 @@
                 <input type="text" id="wa-new-number-input" placeholder="Telegram Chat ID (e.g. 8000019066)" />
                 <button class="btn-secondary" id="wa-add-number-btn" type="button">+ Add Dispatcher</button>
               </div>
-              <div class="field-hint">💡 To add a new team member: have them open <a href="https://t.me/BL_Dispatch_Bot" target="_blank" style="color:var(--gold); text-decoration:underline;"><b>@BL_Dispatch_Bot</b></a>, click <b>Start</b>, and paste their ID from <b>@userinfobot</b>.</div>
+              <div class="field-hint"><svg class="ui-ico" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="8"></line></svg> To add a new team member: have them open <a href="https://t.me/BL_Dispatch_Bot" target="_blank" style="color:var(--gold); text-decoration:underline;"><b>@BL_Dispatch_Bot</b></a>, click <b>Start</b>, and paste their ID from <b>@userinfobot</b>.</div>
             </div>
 
             <!-- Gateway Status Card -->
@@ -343,7 +343,7 @@
                 </div>
                 <div class="meta-item">
                   <span class="meta-label">Gateway Health</span>
-                  <span class="meta-val mono" id="twilio-sender-display" style="color: #22C55E;">🟢 Connected / Active</span>
+                  <span class="meta-val mono" id="twilio-sender-display" style="color: #22C55E;">Connected</span>
                 </div>
               </div>
             </div>
@@ -355,7 +355,7 @@
             
             <div class="phone-mockup-card">
               <div class="phone-mockup-header">
-                <span class="phone-app-title">📱 Live Dispatch Push Alert Preview</span>
+                <span class="phone-app-title"><svg class="ui-ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"></rect><line x1="10.5" y1="18.5" x2="13.5" y2="18.5"></line></svg> Live alert preview</span>
                 <span class="phone-time-indicator mono">Realtime</span>
               </div>
               
@@ -394,7 +394,7 @@
                 <div class="phone-test-row">
                   <input type="text" id="wa-test-number-input" placeholder="Telegram Chat ID (e.g. 8000019066)" value="8000019066" />
                   <button class="btn-primary" id="wa-send-test-btn" type="button" style="background:#0088cc;">
-                    <span id="wa-test-btn-text">⚡ Send Test Alert</span>
+                    <span id="wa-test-btn-text"><svg class="ui-ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> Send test alert</span>
                   </button>
                 </div>
                 <div class="test-feedback" id="wa-test-feedback" hidden></div>
@@ -1173,12 +1173,23 @@
           </div>
 
           <div class="trip-card" id="trip-card">
-            <div class="trip-route">
-              <span id="trip-origin" class="mono">—</span>
-              <span class="trip-arrow">→</span>
-              <span id="trip-destination" class="mono">—</span>
+            <div class="trip-legs">
+              <div class="trip-leg">
+                <span class="trip-leg-label">Pickup</span>
+                <span id="trip-origin" class="trip-leg-value">—</span>
+              </div>
+              <span class="trip-arrow" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+              </span>
+              <div class="trip-leg">
+                <span class="trip-leg-label">Drop-off</span>
+                <span id="trip-destination" class="trip-leg-value">—</span>
+              </div>
+              <div class="trip-leg trip-leg-when">
+                <span class="trip-leg-label">When</span>
+                <span class="trip-leg-value mono" id="trip-date">Not set</span>
+              </div>
             </div>
-            <div class="trip-date mono" id="trip-date">Date not set</div>
             <button id="edit-trip-btn" class="edit-trip-btn">Edit details</button>
           </div>
 
@@ -1230,11 +1241,11 @@
                   </div>
                   <div class="composer-quick-templates">
                     <select id="composer-template-select" class="template-select">
-                      <option value="">⚡ Quick Response Templates…</option>
-                      <option value="quote_confirmation">📋 Offre & Devis Officiel (Mercedes)</option>
-                      <option value="chauffeur_assigned">🚘 Chauffeur & Vehicle Assigned</option>
-                      <option value="flight_delay">✈️ Flight Delay Tracking</option>
-                      <option value="booking_confirmed">✅ VIP Booking Confirmed</option>
+                      <option value="">Quick response templates…</option>
+                      <option value="quote_confirmation">Offre &amp; devis officiel (Mercedes)</option>
+                      <option value="chauffeur_assigned">Chauffeur &amp; vehicle assigned</option>
+                      <option value="flight_delay">Flight delay tracking</option>
+                      <option value="booking_confirmed">VIP booking confirmed</option>
                     </select>
                   </div>
                 </div>
@@ -1262,7 +1273,7 @@
               <div class="composer-toolbar">
                 <div class="composer-toolbar-left-group">
                   <button type="button" class="btn-ai-smart-draft" id="btn-toggle-ai-draft" title="Generate AI reply with Gemini">
-                    <span class="ai-sparkle-icon">✨</span>
+                    <span class="ai-sparkle-icon"><svg class="ui-ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.5L19 10l-5.1 1.5L12 17l-1.9-5.5L5 10l5.1-1.5z"></path></svg></span>
                     <span>AI Smart Draft</span>
                   </button>
 
@@ -1285,15 +1296,15 @@
                     <span class="ai-badge">GEMINI AI ASSISTANT</span>
                     <span class="ai-lang-pill" id="ai-lang-pill">Auto-Language</span>
                   </div>
-                  <button type="button" class="ai-drawer-close-btn" id="ai-drawer-close-btn" title="Close AI Assistant">✕</button>
+                  <button type="button" class="ai-drawer-close-btn" id="ai-drawer-close-btn" title="Close AI Assistant"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
 
                 <!-- AI Quick Tone Selectors & Custom Prompt -->
                 <div class="ai-drawer-controls">
                   <div class="ai-tone-pills">
-                    <button type="button" class="ai-tone-btn active" data-tone="quote" id="ai-tone-quote">💎 Luxury Quote</button>
-                    <button type="button" class="ai-tone-btn" data-tone="confirm" id="ai-tone-confirm">✅ VIP Confirmation</button>
-                    <button type="button" class="ai-tone-btn" data-tone="details" id="ai-tone-details">❓ Request Details</button>
+                    <button type="button" class="ai-tone-btn active" data-tone="quote" id="ai-tone-quote">Luxury quote</button>
+                    <button type="button" class="ai-tone-btn" data-tone="confirm" id="ai-tone-confirm">VIP confirmation</button>
+                    <button type="button" class="ai-tone-btn" data-tone="details" id="ai-tone-details">Request details</button>
                   </div>
                   <div class="ai-custom-prompt-row">
                     <input type="text" id="ai-custom-instructions" class="ai-prompt-input" placeholder="Optional custom instructions (e.g. 'Propose 190€ for S-Class', 'Ask for flight number')…" />
@@ -1311,7 +1322,7 @@
                   </div>
                   <div class="ai-draft-actions-row">
                     <button type="button" class="btn-ai-apply" id="btn-ai-apply">
-                      <span>✨ Insert into Reply Body</span>
+                      <span>Insert into reply</span>
                     </button>
                   </div>
                 </div>
@@ -1335,7 +1346,7 @@
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
                     <span>Rich HTML Signature (Appended automatically on send)</span>
                   </div>
-                  <button type="button" class="composer-signature-edit-btn" id="composer-edit-signature-btn">⚙️ Edit in Settings</button>
+                  <button type="button" class="composer-signature-edit-btn" id="composer-edit-signature-btn"><svg class="ui-ico" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6 1.65 1.65 0 0 0 10 3.09V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.35.4.65.73.85z"></path></svg> Edit in settings</button>
                 </div>
                 <div class="composer-signature-html-render" id="composer-signature-html-render">
                   <!-- Rendered live HTML signature -->
@@ -1413,16 +1424,18 @@
         <label for="login-password">Password</label>
         <div class="password-input-wrap">
           <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password" />
-          <button type="button" class="btn-toggle-pw" id="login-pw-toggle" title="Show/Hide password" tabindex="-1">👁</button>
+          <button type="button" class="btn-toggle-pw" id="login-pw-toggle" title="Show password" aria-label="Show password" tabindex="-1">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          </button>
         </div>
       </div>
       <button type="submit" id="login-submit-btn" class="btn-login">
         <span>Sign In to Console</span>
       </button>
     </form>
-    
+
     <div class="auth-footer-notice">
-      🔒 Secure SSL / Encrypted Chauffeur Dispatch System
+      Authorised dispatch staff only
     </div>
   </div>
 </div>
@@ -1436,7 +1449,7 @@
         <div class="user-modal-title" id="user-modal-title">Add New Team Member</div>
         <div class="user-modal-subtitle">Configure credentials and dispatch authorization level.</div>
       </div>
-      <button type="button" class="user-modal-close-btn" id="user-modal-close-btn">✕</button>
+      <button type="button" class="user-modal-close-btn" id="user-modal-close-btn"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
     </div>
     
     <form id="user-edit-form" class="user-modal-form">
@@ -1481,7 +1494,7 @@
         <label class="field-label" for="user-form-password" id="user-form-password-label">Password *</label>
         <div class="password-input-wrap">
           <input type="password" id="user-form-password" class="settings-input" placeholder="Minimum 6 characters" required autocomplete="new-password" />
-          <button type="button" class="btn-toggle-pw" id="user-form-pw-toggle" title="Show/Hide Password" tabindex="-1">👁</button>
+          <button type="button" class="btn-toggle-pw" id="user-form-pw-toggle" title="Show password" aria-label="Show password" tabindex="-1"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
         </div>
         <div class="field-hint" id="user-form-password-hint" style="display: none;">Leave blank to keep existing password unchanged.</div>
       </div>
@@ -1500,7 +1513,7 @@
 <div id="lightbox-modal" class="lightbox-modal" hidden>
   <div class="lightbox-backdrop" id="lightbox-backdrop"></div>
   <div class="lightbox-content">
-    <button class="lightbox-close-btn" id="lightbox-close-btn" aria-label="Close image">✕</button>
+    <button class="lightbox-close-btn" id="lightbox-close-btn" aria-label="Close image"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
     <img id="lightbox-img" src="" alt="Attachment Preview" />
     <div class="lightbox-caption" id="lightbox-caption"></div>
     <div class="lightbox-actions">

@@ -640,7 +640,7 @@ async function saveEmailSettings() {
     }
   } finally {
     if (saveBtn) saveBtn.disabled = false;
-    if (btnText) btnText.textContent = "💾 Save Email Settings";
+    if (btnText) btnText.textContent = "Save settings";
   }
 }
 
@@ -661,7 +661,7 @@ function resetDefaultSignature() {
 
   const feedbackEl = el("email-settings-feedback");
   if (feedbackEl) {
-    feedbackEl.textContent = "↺ Reset to official Business Limousine template. Remember to click Save.";
+    feedbackEl.textContent = "Reset to the official Business Limousine template. Remember to save.";
     feedbackEl.className = "test-feedback ok";
     feedbackEl.hidden = false;
     setTimeout(() => { feedbackEl.hidden = true; }, 3000);
@@ -752,7 +752,7 @@ async function loadWhatsAppSettings() {
         sidEl.style.color = "#0088cc";
       }
       if (senderEl) {
-        senderEl.textContent = "🟢 Connected (< 0.2s Instant Push)";
+        senderEl.textContent = "Connected";
         senderEl.style.color = "#22C55E";
       }
 
@@ -803,7 +803,7 @@ function renderWaNumbers() {
         <div class="number-item-left">
           <span class="number-badge-country">${getCountryBadge(d.phone)}</span>
           <span class="number-text">${escapeHtml(d.phone)}</span>
-          <span class="${keyClass}">🔑 ${escapeHtml(maskedKey)}</span>
+          <span class="${keyClass}"><svg class="ui-ico" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"></path></svg> ${escapeHtml(maskedKey)}</span>
         </div>
         <button class="number-remove-btn" type="button" data-index="${idx}">Remove</button>
       </div>
@@ -955,7 +955,7 @@ async function sendTestWhatsAppAlert() {
     }
   } finally {
     if (testBtn) testBtn.disabled = false;
-    if (testBtnText) testBtnText.textContent = "⚡ Send Test Alert";
+    if (testBtnText) testBtnText.textContent = "Send test alert";
   }
 }
 
@@ -1041,7 +1041,7 @@ function renderUsersTable(filter = "") {
         <td>
           <div class="user-actions-cell">
             <button type="button" class="btn-user-action btn-edit-user" data-user-id="${u.id}" title="Edit User">
-              ✏️ Edit
+              <svg class="ui-ico" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"></path></svg> Edit
             </button>
             ${!isYou
         ? `
@@ -1049,7 +1049,7 @@ function renderUsersTable(filter = "") {
                 ${active ? "⏸ Disable" : "▶ Enable"}
               </button>
               <button type="button" class="btn-user-action danger btn-delete-user" data-user-id="${u.id}" data-email="${escapeHtml(u.email)}" title="Delete User">
-                🗑
+                <svg class="ui-ico" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
               </button>
             `
         : ""
@@ -2022,9 +2022,9 @@ async function selectConversation(id, reloadDetail = true, switchTab = false) {
 
     renderStatusSelect(conversation.status);
 
-    if (el("trip-origin")) el("trip-origin").textContent = conversation.origin || "Pickup not set";
-    if (el("trip-destination")) el("trip-destination").textContent = conversation.destination || "Drop-off not set";
-    if (el("trip-date")) el("trip-date").textContent = conversation.trip_date || "Date not set";
+    if (el("trip-origin")) el("trip-origin").textContent = conversation.origin || "Not set";
+    if (el("trip-destination")) el("trip-destination").textContent = conversation.destination || "Not set";
+    if (el("trip-date")) el("trip-date").textContent = conversation.trip_date || "Not set";
     if (el("trip-edit")) el("trip-edit").hidden = true;
 
     if (el("edit-client-name")) el("edit-client-name").value = conversation.client_name || "";
@@ -2113,7 +2113,7 @@ async function fetchAiSmartDraft(tone = "quote", customPrompt = null) {
   });
 
   if (bodyEl) {
-    bodyEl.innerHTML = `<span style="color:var(--brass); font-style:italic;">✨ Gemini AI is analyzing the trip and composing luxury response drafts…</span>`;
+    bodyEl.innerHTML = `<span style="color:var(--brass); font-style:italic;">Gemini is analysing the trip and composing a response drafts…</span>`;
   }
   if (genBtnText) genBtnText.textContent = "Thinking…";
 
@@ -2257,7 +2257,7 @@ function renderComposerAttachments() {
         ${thumbHtml}
         <span class="att-name" title="${escapeHtml(att.filename)}">${escapeHtml(att.filename)}</span>
         <span class="att-size">(${formatFileSize(att.file_size)})</span>
-        <button type="button" class="att-remove-btn" data-remove-idx="${idx}" title="Remove attachment">✕</button>
+        <button type="button" class="att-remove-btn" data-remove-idx="${idx}" title="Remove attachment"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
       </div>
     `;
   }).join("");
@@ -2515,6 +2515,14 @@ function renderThread(messages, convo) {
       ? `<span class="cc-badge-chip">CC: ${escapeHtml(m.cc_addr)}</span>`
       : "";
 
+    /* The thread header already carries the subject. Repeat it on a message only
+       when it actually diverges — someone renaming the thread mid-conversation is
+       worth seeing; "Re: " noise is not. */
+    const normaliseSubject = (s) =>
+      (s || "").replace(/^\s*((re|fw|fwd|tr|aw|antw)\s*:\s*)+/i, "").trim().toLowerCase();
+    const subjectDiffers =
+      isExpanded && m.subject && normaliseSubject(m.subject) !== normaliseSubject(mainSubject);
+
     const renderedBodyHtml = m.body_html
       ? buildSafeEmailIframeHtml(m.body_html, m.id)
       : `<div class="email-body-text">${escapeHtml(bodyText)}</div>`;
@@ -2542,39 +2550,41 @@ function renderThread(messages, convo) {
           </div>
           <div class="email-card-head-right">
             <span class="email-time">${formatTimestamp(m.received_at || m.created_at)}</span>
-            <span class="email-collapse-toggle">▼</span>
+            <span class="email-collapse-toggle" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </span>
           </div>
         </div>
 
-        <div class="email-meta-details">
-          <div class="meta-detail-row">
-            <span class="meta-detail-label">From:</span>
+        <!-- Full headers, folded away. They were printed above every message,
+             which put a block of From/To/Date/Subject between the reader and the
+             mail itself and repeated what the card header already says. Still one
+             click away for when a threading or address question comes up. -->
+        <details class="email-meta-details">
+          <summary>
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <span>Message details</span>
+          </summary>
+          <div class="meta-detail-grid">
+            <span class="meta-detail-label">From</span>
             <span class="meta-detail-value">${escapeHtml(m.from_addr || senderName)}</span>
-          </div>
-          <div class="meta-detail-row">
-            <span class="meta-detail-label">To:</span>
+            <span class="meta-detail-label">To</span>
             <span class="meta-detail-value">${escapeHtml(m.to_addr || convo?.client_email || "")}</span>
-          </div>
-          ${m.cc_addr ? `
-            <div class="meta-detail-row">
-              <span class="meta-detail-label">Cc:</span>
+            ${m.cc_addr ? `
+              <span class="meta-detail-label">Cc</span>
               <span class="meta-detail-value">${escapeHtml(m.cc_addr)}</span>
-            </div>
-          ` : ""}
-          <div class="meta-detail-row">
-            <span class="meta-detail-label">Date:</span>
+            ` : ""}
+            <span class="meta-detail-label">Date</span>
             <span class="meta-detail-value">${safeUtcString(m.received_at || m.created_at)}</span>
-          </div>
-          ${m.subject ? `
-            <div class="meta-detail-row">
-              <span class="meta-detail-label">Subject:</span>
+            ${m.subject ? `
+              <span class="meta-detail-label">Subject</span>
               <span class="meta-detail-value">${escapeHtml(m.subject)}</span>
-            </div>
-          ` : ""}
-        </div>
+            ` : ""}
+          </div>
+        </details>
 
         <div class="email-card-body">
-          ${m.subject && isExpanded ? `<div class="email-subject-line">${escapeHtml(m.subject)}</div>` : ""}
+          ${subjectDiffers ? `<div class="email-subject-line">${escapeHtml(m.subject)}</div>` : ""}
           ${renderedBodyHtml}
           ${quotedText ? `
             <details class="message-quote">
@@ -2777,10 +2787,15 @@ function wireEvents() {
   const loginPwToggle = el("login-pw-toggle");
   const loginPwInput = el("login-password");
   if (loginPwToggle && loginPwInput) {
+    // The icon stays put; state is carried by colour and the label, so swapping
+    // it never replaces the SVG with a stray emoji.
     loginPwToggle.addEventListener("click", () => {
-      const isPw = loginPwInput.type === "password";
-      loginPwInput.type = isPw ? "text" : "password";
-      loginPwToggle.textContent = isPw ? "🔒" : "👁";
+      const revealing = loginPwInput.type === "password";
+      loginPwInput.type = revealing ? "text" : "password";
+      loginPwToggle.classList.toggle("showing", revealing);
+      const label = revealing ? "Hide password" : "Show password";
+      loginPwToggle.title = label;
+      loginPwToggle.setAttribute("aria-label", label);
     });
   }
 
@@ -2788,9 +2803,12 @@ function wireEvents() {
   const userPwInput = el("user-form-password");
   if (userPwToggle && userPwInput) {
     userPwToggle.addEventListener("click", () => {
-      const isPw = userPwInput.type === "password";
-      userPwInput.type = isPw ? "text" : "password";
-      userPwToggle.textContent = isPw ? "🔒" : "👁";
+      const revealing = userPwInput.type === "password";
+      userPwInput.type = revealing ? "text" : "password";
+      userPwToggle.classList.toggle("showing", revealing);
+      const label = revealing ? "Hide password" : "Show password";
+      userPwToggle.title = label;
+      userPwToggle.setAttribute("aria-label", label);
     });
   }
 
