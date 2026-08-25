@@ -50,8 +50,41 @@ app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25 MB max upload
 # Serialization helpers
 # --------------------------------------------------------------------------
 
+def _snippet(text, limit=140):
+    """One-line preview of a message body for the manifest row.
+
+    Quoted replies and signature blocks are stripped first, otherwise every row in
+    a long thread previews as '> On Tuesday, X wrote:' rather than what was said.
+    """
+    if not text:
+        return ""
+    lines = []
+    for raw in str(text).splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith(">"):
+            continue
+        if line.startswith("--") or line.startswith("__"):
+            break  # signature delimiter
+        low = line.lower()
+        if low.startswith(("on ", "le ", "op ")) and low.rstrip().endswith(("wrote:", "a écrit :", "a écrit:", "schreef:")):
+            break
+        if low.startswith(("from:", "de :", "de:", "van:", "sent:", "envoyé :")):
+            break
+        lines.append(line)
+        if sum(len(x) for x in lines) > limit:
+            break
+    out = " ".join(lines).strip()
+    return (out[: limit - 1] + "…") if len(out) > limit else out
+
+
+def _has(row, key):
+    return key in row.keys()
+
+
 def row_to_conversation(row):
-    return {
+    data = {
         "id": row["id"],
         "client_name": row["client_name"],
         "client_email": row["client_email"],
@@ -63,7 +96,22 @@ def row_to_conversation(row):
         "last_message_at": row["last_message_at"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+        # Mailbox state. Older rows predate these columns, hence the guards.
+        "is_read": bool(row["is_read"]) if _has(row, "is_read") else True,
+        "is_starred": bool(row["is_starred"]) if _has(row, "is_starred") else False,
+        "is_archived": bool(row["is_archived"]) if _has(row, "is_archived") else False,
     }
+    # Only the manifest query selects these; the detail endpoint doesn't need them.
+    if _has(row, "last_subject"):
+        data.update({
+            "subject": row["last_subject"] or "",
+            "snippet": _snippet(row["last_body"]),
+            "last_direction": row["last_direction"],
+            "message_count": row["message_count"] or 0,
+            "attachment_count": row["attachment_count"] or 0,
+            "note_count": row["note_count"] or 0,
+        })
+    return data
 
 
 def row_to_message(row):
@@ -361,12 +409,78 @@ def api_delete_user(user_id):
 def api_list_conversations():
     status = request.args.get("status")
     search = request.args.get("search")
+    archived = request.args.get("archived") == "1"
+
+    # Paged. The manifest used to fetch every conversation and rebuild the whole
+    # list every 15 seconds, which is fine at 3 rows and not at 3,000.
+    try:
+        limit = max(1, min(int(request.args.get("limit", 50)), 200))
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        offset = max(0, int(request.args.get("offset", 0)))
+    except (TypeError, ValueError):
+        offset = 0
+
     with db_session() as conn:
-        rows = models.list_conversations(conn, status=status, search=search)
+        rows = models.list_conversations(
+            conn, status=status, search=search,
+            limit=limit, offset=offset, archived=archived,
+        )
+        total = models.count_conversations(
+            conn, status=status, search=search, archived=archived
+        )
         counts = models.status_counts(conn)
+
     return jsonify({
         "conversations": [row_to_conversation(r) for r in rows],
-        "counts": counts,
+        "counts": counts["counts"],
+        "unread": counts["unread"],
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + len(rows) < total,
+    })
+
+
+@app.post("/api/conversations/<int:conversation_id>/flags")
+@login_required
+def api_set_conversation_flags(conversation_id):
+    """Mailbox state: read, starred, archived. Separate from dispatch status."""
+    data = request.get_json(silent=True) or {}
+    with db_session() as conn:
+        if not models.get_conversation(conn, conversation_id):
+            return jsonify({"error": "Conversation not found"}), 404
+        changed = models.set_conversation_flags(
+            conn, conversation_id,
+            is_read=data.get("is_read"),
+            is_starred=data.get("is_starred"),
+            is_archived=data.get("is_archived"),
+        )
+        if not changed:
+            return jsonify({"error": "No recognised flag in request"}), 400
+        row = models.get_conversation(conn, conversation_id)
+        counts = models.status_counts(conn)
+    return jsonify({
+        "success": True,
+        "conversation": row_to_conversation(row),
+        "counts": counts["counts"],
+        "unread": counts["unread"],
+    })
+
+
+@app.post("/api/conversations/mark-all-read")
+@login_required
+def api_mark_all_read():
+    data = request.get_json(silent=True) or {}
+    with db_session() as conn:
+        affected = models.mark_all_read(conn, status=data.get("status"))
+        counts = models.status_counts(conn)
+    return jsonify({
+        "success": True,
+        "marked": affected,
+        "counts": counts["counts"],
+        "unread": counts["unread"],
     })
 
 
@@ -908,7 +1022,8 @@ def api_block_sender():
     return jsonify({
         "success": True,
         "pattern": pattern,
-        "counts": counts,
+        "counts": counts["counts"],
+        "unread": counts["unread"],
         "message": f"Expéditeur '{pattern}' bloqué avec succès.",
     })
 
@@ -919,7 +1034,7 @@ def api_delete_blocked_sender(blocked_id):
     with db_session() as conn:
         models.delete_blocked_sender(conn, blocked_id)
         counts = models.status_counts(conn)
-    return jsonify({"success": True, "counts": counts})
+    return jsonify({"success": True, "counts": counts["counts"], "unread": counts["unread"]})
 
 
 # --------------------------------------------------------------------------

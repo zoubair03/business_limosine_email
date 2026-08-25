@@ -228,39 +228,163 @@ def touch_conversation_last_message(conn, conversation_id, when_iso):
     )
 
 
-def list_conversations(conn, status=None, search=None):
-    query = "SELECT * FROM conversations"
+def _conversation_filters(status=None, search=None, starred=None, archived=False):
+    """Shared WHERE builder so the list query and its total count can never drift."""
     clauses, params = [], []
+
+    if archived is True:
+        clauses.append("c.is_archived = 1")
+    elif archived is False:
+        clauses.append("c.is_archived = 0")
+    # archived=None means "both", used by search
+
     if status == "IMPORTANT":
-        clauses.append("status IN ('DOCCLE', 'EBOX', 'IMPORTANT')")
+        clauses.append("c.status IN ('DOCCLE', 'EBOX', 'IMPORTANT')")
+    elif status == "UNREAD":
+        clauses.append("c.is_read = 0 AND c.status NOT IN ('OTHER', 'DOCCLE', 'EBOX')")
+    elif status == "STARRED":
+        clauses.append("c.is_starred = 1")
     elif status and status != "ALL":
-        clauses.append("status = ?")
+        clauses.append("c.status = ?")
         params.append(status)
-    elif not status or status == "ALL":
-        # 'All conversations' in dispatch shows active transport booking conversations
-        clauses.append("status NOT IN ('OTHER', 'DOCCLE', 'EBOX')")
+    else:
+        # 'All conversations' shows active transport bookings, not utility mail.
+        clauses.append("c.status NOT IN ('OTHER', 'DOCCLE', 'EBOX')")
+
+    if starred is True:
+        clauses.append("c.is_starred = 1")
+
     if search:
-        clauses.append(
-            "(client_name LIKE ? OR client_email LIKE ? OR origin LIKE ? OR destination LIKE ?)"
-        )
+        # A mail search that cannot find a word in the mail is not a search. The
+        # EXISTS keeps one row per conversation however many messages match.
+        clauses.append("""(
+            c.client_name LIKE ? OR c.client_email LIKE ?
+            OR c.origin LIKE ? OR c.destination LIKE ?
+            OR EXISTS (SELECT 1 FROM messages m2
+                       WHERE m2.conversation_id = c.id
+                         AND (m2.subject LIKE ? OR m2.body_text LIKE ?))
+        )""")
         like = f"%{search}%"
-        params.extend([like, like, like, like])
-    if clauses:
-        query += " WHERE " + " AND ".join(clauses)
-    query += " ORDER BY last_message_at DESC"
+        params.extend([like] * 6)
+
+    return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
+
+
+# Correlated subqueries against the last message. Cheaper than joining the whole
+# messages table and then de-duplicating, and it keeps one row per conversation.
+_LIST_SELECT = """
+SELECT c.*,
+       (SELECT m.subject FROM messages m
+         WHERE m.conversation_id = c.id
+         ORDER BY m.received_at DESC, m.id DESC LIMIT 1)          AS last_subject,
+       (SELECT m.body_text FROM messages m
+         WHERE m.conversation_id = c.id
+         ORDER BY m.received_at DESC, m.id DESC LIMIT 1)          AS last_body,
+       (SELECT m.direction FROM messages m
+         WHERE m.conversation_id = c.id
+         ORDER BY m.received_at DESC, m.id DESC LIMIT 1)          AS last_direction,
+       (SELECT COUNT(*) FROM messages m
+         WHERE m.conversation_id = c.id)                          AS message_count,
+       (SELECT COUNT(*) FROM messages m
+         WHERE m.conversation_id = c.id
+           AND m.attachments IS NOT NULL AND m.attachments != ''
+           AND m.attachments != '[]')                             AS attachment_count,
+       (SELECT COUNT(*) FROM notes n
+         WHERE n.conversation_id = c.id)                          AS note_count
+  FROM conversations c
+"""
+
+
+def list_conversations(conn, status=None, search=None, limit=None, offset=0,
+                       starred=None, archived=False):
+    """One page of the manifest, newest first.
+
+    `limit=None` returns everything, which is what the callers that need the whole
+    book (exports, the alert watcher) want; the UI always passes a limit.
+    """
+    where, params = _conversation_filters(status, search, starred, archived)
+    # COALESCE so a conversation with no last_message_at still sorts sensibly
+    # instead of drifting to the bottom on some SQLite builds and the top on others.
+    query = _LIST_SELECT + where + " ORDER BY COALESCE(c.last_message_at, c.created_at) DESC, c.id DESC"
+    if limit is not None:
+        query += " LIMIT ? OFFSET ?"
+        params = params + [int(limit), int(offset)]
     return conn.execute(query, params).fetchall()
 
 
+def count_conversations(conn, status=None, search=None, starred=None, archived=False):
+    where, params = _conversation_filters(status, search, starred, archived)
+    row = conn.execute("SELECT COUNT(*) AS n FROM conversations c" + where, params).fetchone()
+    return row["n"] if row else 0
+
+
+def set_conversation_flags(conn, conversation_id, **flags):
+    """Sets is_read / is_starred / is_archived. Ignores anything else."""
+    allowed = {"is_read", "is_starred", "is_archived"}
+    sets, params = [], []
+    for key, value in flags.items():
+        if key in allowed and value is not None:
+            sets.append(f"{key} = ?")
+            params.append(1 if value else 0)
+    if not sets:
+        return False
+    sets.append("updated_at = ?")
+    params.append(_now())
+    params.append(conversation_id)
+    conn.execute(f"UPDATE conversations SET {', '.join(sets)} WHERE id = ?", params)
+    return True
+
+
+def mark_all_read(conn, status=None):
+    """Marks every conversation in the current view read. Returns rows affected."""
+    where, params = _conversation_filters(status, None, None, False)
+    # _conversation_filters aliases the table as c; a bare UPDATE cannot use that,
+    # so scope by id through a subquery instead.
+    cur = conn.execute(
+        f"UPDATE conversations SET is_read = 1 WHERE is_read = 0 AND id IN "
+        f"(SELECT c.id FROM conversations c{where})", params
+    )
+    return cur.rowcount
+
+
 def status_counts(conn):
+    """Totals per status, plus the unread counts the sidebar badges show.
+
+    Archived conversations are excluded throughout — an archived thread should not
+    keep a badge lit.
+    """
     rows = conn.execute(
-        "SELECT status, COUNT(*) AS n FROM conversations GROUP BY status"
+        "SELECT status, COUNT(*) AS n FROM conversations WHERE is_archived = 0 GROUP BY status"
     ).fetchall()
     counts = {s: 0 for s in ALL_STATUSES}
     for row in rows:
         counts[row["status"]] = row["n"]
     counts["IMPORTANT"] = counts.get("DOCCLE", 0) + counts.get("EBOX", 0)
-    counts["ALL"] = sum(count for st, count in counts.items() if st not in ("OTHER", "DOCCLE", "EBOX", "IMPORTANT"))
-    return counts
+    counts["ALL"] = sum(count for st, count in counts.items()
+                        if st not in ("OTHER", "DOCCLE", "EBOX", "IMPORTANT"))
+
+    unread_rows = conn.execute(
+        "SELECT status, COUNT(*) AS n FROM conversations "
+        "WHERE is_read = 0 AND is_archived = 0 GROUP BY status"
+    ).fetchall()
+    unread = {s: 0 for s in ALL_STATUSES}
+    for row in unread_rows:
+        unread[row["status"]] = row["n"]
+    unread["IMPORTANT"] = unread.get("DOCCLE", 0) + unread.get("EBOX", 0)
+    unread["ALL"] = sum(n for st, n in unread.items()
+                        if st not in ("OTHER", "DOCCLE", "EBOX", "IMPORTANT"))
+
+    starred = conn.execute(
+        "SELECT COUNT(*) AS n FROM conversations WHERE is_starred = 1 AND is_archived = 0"
+    ).fetchone()["n"]
+    archived = conn.execute(
+        "SELECT COUNT(*) AS n FROM conversations WHERE is_archived = 1"
+    ).fetchone()["n"]
+
+    counts["STARRED"] = starred
+    counts["ARCHIVED"] = archived
+    counts["UNREAD"] = unread["ALL"]
+    return {"counts": counts, "unread": unread}
 
 
 # --------------------------------------------------------------------------
@@ -296,7 +420,22 @@ def add_message(conn, conversation_id, direction, subject, body_text, body_html,
         (conversation_id, direction, message_id, in_reply_to, from_addr, to_addr, cc_addr,
          subject, body_text, body_html, attachments_str, ai_category, ai_confidence, received_at, now),
     )
-    touch_conversation_last_message(conn, conversation_id, received_at)
+    # INSERT OR IGNORE: a duplicate message_id is a re-sync of mail already seen,
+    # and must not resurrect a thread as unread or bump it up the manifest.
+    if cur.rowcount:
+        touch_conversation_last_message(conn, conversation_id, received_at)
+        if direction == "inbound":
+            # New mail from the client reopens the thread as unread — including a
+            # thread someone had already read, which is what makes a reply visible.
+            conn.execute(
+                "UPDATE conversations SET is_read = 0, is_archived = 0 WHERE id = ?",
+                (conversation_id,),
+            )
+        else:
+            # We just sent something, so we have obviously seen the thread.
+            conn.execute(
+                "UPDATE conversations SET is_read = 1 WHERE id = ?", (conversation_id,)
+            )
     return cur.lastrowid
 
 

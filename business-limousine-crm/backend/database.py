@@ -34,6 +34,11 @@ CREATE TABLE IF NOT EXISTS conversations (
     origin          TEXT,
     destination     TEXT,
     last_message_at TEXT,
+    -- Mailbox state, independent of the dispatch status above. A conversation can
+    -- be CONFIRMED and still unread, or NEW_REQUEST and already triaged.
+    is_read         INTEGER NOT NULL DEFAULT 0,
+    is_starred      INTEGER NOT NULL DEFAULT 0,
+    is_archived     INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL
 );
@@ -142,6 +147,20 @@ def db_session():
         conn.close()
 
 
+def _add_column(conn, table, column, ddl):
+    """Adds a column if it isn't there yet. Returns True if it was just added.
+
+    Checked against PRAGMA table_info rather than catching the duplicate-column
+    error, so that a real problem — a locked file, a corrupt database — is raised
+    instead of being mistaken for "already migrated".
+    """
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column in existing:
+        return False
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    return True
+
+
 def init_db():
     with db_session() as conn:
         try:
@@ -149,6 +168,28 @@ def init_db():
         except Exception:
             pass
         conn.executescript(SCHEMA)
+
+        # Mailbox state on existing databases. Unlike the blanket try/except
+        # migrations below, this checks the column list first, so a genuine failure
+        # (a locked database, a disk error) surfaces instead of being swallowed.
+        added_read = _add_column(conn, "conversations", "is_read", "INTEGER NOT NULL DEFAULT 0")
+        _add_column(conn, "conversations", "is_starred", "INTEGER NOT NULL DEFAULT 0")
+        _add_column(conn, "conversations", "is_archived", "INTEGER NOT NULL DEFAULT 0")
+
+        # Everything already in the book predates read tracking. Marking it all read
+        # is the honest default: flagging years of history as unread would bury
+        # whatever actually arrived today. Only on the migration itself — after that,
+        # unread is meaningful and must not be reset.
+        if added_read:
+            conn.execute("UPDATE conversations SET is_read = 1")
+
+        # Created here rather than in SCHEMA: on an existing database the columns
+        # above do not exist until the ALTERs have run, and CREATE TABLE IF NOT
+        # EXISTS is a no-op, so an index in SCHEMA referencing them fails outright.
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversations_recent "
+            "ON conversations (is_archived, status, last_message_at DESC)"
+        )
 
         # Migrations: ensure user_id column exists on existing notes table if table existed
         try:

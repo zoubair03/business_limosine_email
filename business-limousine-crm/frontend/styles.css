@@ -4417,3 +4417,225 @@ select {
   color: var(--text);
   border-color: rgba(255, 255, 255, 0.2);
 }
+/* =========================================================================
+   Inbox rework
+   Rows now read like mail: sender, subject, preview. Unread is carried by
+   weight and a brass dot rather than colour alone, so it survives a
+   greyscale print and a colour-blind reader.
+   ========================================================================= */
+
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  flex-shrink: 0;
+}
+
+.list-filters { display: inline-flex; gap: 2px; }
+
+.list-filter {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 4px 9px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: background 0.12s, color 0.12s;
+}
+.list-filter:hover { background: var(--paper); color: var(--text); }
+.list-filter.active { background: var(--brass-soft); color: var(--brass-strong); border-color: rgba(184,122,33,0.28); }
+.list-filter:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+
+.filter-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--brass);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 5px;
+  min-width: 16px;
+  text-align: center;
+}
+
+.list-mark-read {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+.list-mark-read:hover { color: var(--brass-strong); background: var(--paper); }
+.list-mark-read:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+
+.conversation-list { flex: 1; min-height: 0; overflow-y: auto; }
+.conversation-list:focus { outline: none; }
+
+/* --- the row --- */
+.conversation-row:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+
+.row-sender { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+
+.unread-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--brass);
+  flex-shrink: 0;
+  visibility: hidden;
+}
+.conversation-row.unread .unread-dot { visibility: visible; }
+
+/* Unread is weight + dot, not colour alone. */
+.conversation-row.unread .row-name,
+.conversation-row.unread .row-subject { font-weight: 700; color: var(--text); }
+.conversation-row.unread .row-time { color: var(--brass-strong); font-weight: 600; }
+.conversation-row.unread { background: var(--card); }
+
+.row-meta { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.row-icon { display: inline-flex; color: var(--text-muted); }
+.row-icon.replied { color: var(--steel); }
+
+.row-count {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 5px;
+  line-height: 15px;
+}
+
+.row-subject {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-snippet {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.45;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.btn-row-star,
+.btn-row-archive {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px; height: 20px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.12s, background 0.12s;
+}
+.conversation-row:hover .btn-row-star,
+.conversation-row:hover .btn-row-archive,
+.conversation-row:focus-within .btn-row-star,
+.conversation-row:focus-within .btn-row-archive { opacity: 0.65; }
+.btn-row-star:hover, .btn-row-archive:hover { opacity: 1 !important; background: var(--paper); color: var(--text); }
+.btn-row-star:focus-visible, .btn-row-archive:focus-visible { opacity: 1; outline: 2px solid var(--brass); outline-offset: 1px; }
+/* A star that is on stays visible whether or not the row is hovered. */
+.btn-row-star.on { opacity: 1 !important; color: var(--brass); }
+
+.list-load-more {
+  flex-shrink: 0;
+  appearance: none;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: var(--card);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brass-strong);
+  padding: 11px;
+  cursor: pointer;
+  width: 100%;
+}
+.list-load-more:hover { background: var(--paper); }
+.list-load-more:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.list-load-more span { color: var(--text-muted); font-weight: 500; }
+
+.list-hint {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+.list-hint kbd {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin: 0 1px;
+  color: var(--text);
+}
+
+/* --- sidebar badges: unread leads, total follows --- */
+.count-group { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; }
+
+/* Selector matches `.status-nav-item .count` (0-2-0) rather than sitting at
+   0-1-0, otherwise that rule's faint grey wins and the number disappears into
+   the brass pill — and `.status-nav-item.active .count` paints it brass on
+   brass, which renders the badge completely blank. */
+.status-nav-item .count.unread-badge,
+.status-nav-item.active .count.unread-badge {
+  background: var(--brass);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  min-width: 18px;
+  text-align: center;
+}
+.status-nav-item.has-unread .label { font-weight: 700; color: #fff; }
+.status-nav-item.has-unread .total-count { opacity: 0.55; }
+
+@media (max-width: 1100px) {
+  .list-hint { display: none; }
+}

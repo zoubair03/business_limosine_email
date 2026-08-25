@@ -31,6 +31,9 @@ const state = {
   search: "",
   conversations: [],
   counts: {},
+  unread: {},          // per-status unread counts for the sidebar badges
+  total: 0,            // matching rows on the server, for "load more"
+  listFilter: "ALL",   // mailbox filter: ALL | UNREAD | STARRED | ARCHIVED
   selectedId: null,
   selectedDetail: null,
   tab: "thread",
@@ -249,15 +252,22 @@ function renderStatusNav() {
 
   mainItems.forEach((s) => {
     const count = state.counts[s.key] ?? 0;
+    const unread = state.unread?.[s.key] ?? 0;
     const activeClass = s.key === state.status ? "active" : "";
     const dotClass = s.key === "ALL" ? "" : `status-${s.key}`;
+    // Unread is the number that matters at a glance, so it takes the badge and
+    // the bold treatment; the total stays visible but quiet beside it.
     html += `
-      <button class="status-nav-item ${activeClass}" data-status="${s.key}">
+      <button class="status-nav-item ${activeClass} ${unread ? "has-unread" : ""}" data-status="${s.key}">
         <span class="label">
           ${s.key !== "ALL" ? `<span class="dot ${dotClass}"></span>` : ""}
           ${s.label}
         </span>
-        <span class="count">${count}</span>
+        <span class="count-group">
+          ${unread
+            ? `<span class="count unread-badge" title="${unread} unread of ${count}">${unread}</span>`
+            : `<span class="count total-count" title="${count} conversations">${count}</span>`}
+        </span>
       </button>
     `;
   });
@@ -1255,16 +1265,45 @@ async function handleDeleteUser(userId, userEmail) {
 // Conversation list
 // -------------------------------------------------------------------------
 
-async function loadConversations() {
+const PAGE_SIZE = 50;
+
+async function loadConversations({ append = false, silent = false } = {}) {
   if (!state.user) return;
+
   const params = new URLSearchParams();
-  if (state.status !== "ALL") params.set("status", state.status);
+  const filter = state.listFilter || "ALL";
+
+  // The sidebar picks a dispatch status; the toolbar picks a mailbox filter.
+  // UNREAD and STARRED are mailbox filters and override the status; ARCHIVED is
+  // a separate view of the same statuses.
+  if (filter === "UNREAD" || filter === "STARRED") {
+    params.set("status", filter);
+  } else {
+    if (state.status && state.status !== "ALL") params.set("status", state.status);
+    if (filter === "ARCHIVED") params.set("archived", "1");
+  }
   if (state.search) params.set("search", state.search);
+  params.set("limit", String(PAGE_SIZE));
+  params.set("offset", String(append ? state.conversations.length : 0));
 
   try {
     const data = await api(`/api/conversations?${params.toString()}`);
-    state.conversations = data.conversations;
+
+    if (append) {
+      // De-duplicate: new mail arriving between pages can otherwise shift rows
+      // across the page boundary and repeat one in the list.
+      const seen = new Set(state.conversations.map((c) => c.id));
+      state.conversations = state.conversations.concat(
+        data.conversations.filter((c) => !seen.has(c.id))
+      );
+    } else {
+      state.conversations = data.conversations;
+    }
+
     state.counts = data.counts;
+    state.unread = data.unread || {};
+    state.total = data.total;
+
     renderStatusNav();
     renderConversations();
     await fetchRecentNotes();
@@ -1272,8 +1311,10 @@ async function loadConversations() {
     if (state.selectedId) {
       const stillExists = state.conversations.some((c) => c.id === state.selectedId);
       if (stillExists) {
-        selectConversation(state.selectedId, false);
-      } else {
+        // A background poll must not reload the thread underneath someone who is
+        // reading or replying — only refresh the detail when the user asked.
+        if (!silent) selectConversation(state.selectedId, false);
+      } else if (!append) {
         state.selectedId = null;
         if (el("detail-empty")) el("detail-empty").hidden = false;
         if (el("detail-content")) el("detail-content").hidden = true;
@@ -1357,68 +1398,334 @@ async function handleBlockSender(convoId, email, btn) {
   }
 }
 
+/* The inner markup of one row. Kept separate from the row element so a refresh can
+   rewrite contents in place without replacing the node — replacing it would drop
+   keyboard focus and reset the list's scroll position, which is what made the
+   15-second poll feel like the inbox was fighting you. */
+function conversationRowHTML(c) {
+  const name = c.client_name || (c.client_email || "").split("@")[0] || "Unknown sender";
+  const subject = c.subject || "(no subject)";
+  const snippet = c.snippet || "";
+  const route = (c.origin && c.destination)
+    ? `${c.origin} → ${c.destination}`
+    : (c.origin || c.destination || "");
+
+  const attach = c.attachment_count
+    ? `<span class="row-icon" title="${c.attachment_count} attachment${c.attachment_count > 1 ? "s" : ""}">
+         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+       </span>` : "";
+  const notes = c.note_count
+    ? `<span class="row-icon" title="${c.note_count} internal note${c.note_count > 1 ? "s" : ""}">
+         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+       </span>` : "";
+  const count = c.message_count > 1
+    ? `<span class="row-count" title="${c.message_count} messages in this thread">${c.message_count}</span>` : "";
+  // An outbound last message means we replied and are waiting on them.
+  const replied = c.last_direction === "outbound"
+    ? `<span class="row-icon replied" title="Last message was ours">
+         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+       </span>` : "";
+
+  return `
+    <span class="row-tag status-${c.status}"></span>
+    <span class="row-body">
+      <span class="row-top">
+        <span class="row-sender">
+          <span class="unread-dot" aria-hidden="true"></span>
+          <span class="row-name">${escapeHtml(name)}</span>
+        </span>
+        <span class="row-meta">
+          ${count}${notes}${attach}${replied}
+          <span class="row-time mono">${formatRelative(c.last_message_at || c.created_at)}</span>
+        </span>
+      </span>
+      <span class="row-subject">${escapeHtml(subject)}</span>
+      <span class="row-snippet">${escapeHtml(snippet)}</span>
+      <span class="row-bottom">
+        <span class="row-route ${route ? "" : "empty"}">${route ? escapeHtml(route) : "Route not set"}</span>
+        <span class="row-actions-group">
+          <button type="button" class="btn-row-star ${c.is_starred ? "on" : ""}" data-id="${c.id}"
+                  title="${c.is_starred ? "Remove star" : "Star this conversation"}"
+                  aria-label="${c.is_starred ? "Remove star" : "Star this conversation"}" aria-pressed="${c.is_starred}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="${c.is_starred ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          </button>
+          <button type="button" class="btn-row-archive" data-id="${c.id}"
+                  title="${c.is_archived ? "Move back to inbox" : "Archive"}" aria-label="${c.is_archived ? "Unarchive" : "Archive"}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+          </button>
+          <button type="button" class="btn-block-sender" data-id="${c.id}" data-email="${escapeHtml(c.client_email || "")}" title="Block this sender">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+          </button>
+          <span class="status-pill status-${c.status}">${c.status.replace("_", " ")}</span>
+        </span>
+      </span>
+    </span>
+  `;
+}
+
 function renderConversations() {
   const list = el("conversation-list");
   const empty = el("list-empty");
+
   if (state.conversations.length === 0) {
-    list.innerHTML = "";
+    list.replaceChildren();
     empty.hidden = false;
+    updateLoadMore();
     return;
   }
   empty.hidden = true;
 
-  list.innerHTML = state.conversations.map((c) => {
-    const selected = c.id === state.selectedId ? "selected" : "";
-    const name = c.client_name || c.client_email.split("@")[0];
-    const route = (c.origin && c.destination)
-      ? `${c.origin} → ${c.destination}`
-      : (c.origin || c.destination || "");
-    return `
-      <div class="conversation-row ${selected}" data-id="${c.id}" role="button" tabindex="0">
-        <span class="row-tag status-${c.status}"></span>
-        <span class="row-body">
-          <span class="row-top">
-            <span class="row-name">${escapeHtml(name)}</span>
-            <span class="row-time mono">${formatRelative(c.last_message_at || c.created_at)}</span>
-          </span>
-          <span class="row-email">${escapeHtml(c.client_email)}</span>
-          <span class="row-bottom">
-            <span class="row-route ${route ? "" : "empty"}">${route ? escapeHtml(route) : "Route not set"}</span>
-            <div class="row-actions-group">
-              <button type="button" class="btn-block-sender" data-id="${c.id}" data-email="${escapeHtml(c.client_email)}" title="Bloquer cet expéditeur et l'ajouter à la blacklist">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
-              </button>
-              <span class="status-pill status-${c.status}">${c.status.replace("_", " ")}</span>
-            </div>
-          </span>
-        </span>
-      </div>
-    `;
-  }).join("");
+  // Reconcile against what's on screen instead of rebuilding it. Rows that are
+  // still present keep their DOM node (and therefore focus and scroll offset);
+  // only their contents and state classes are refreshed.
+  const existing = new Map();
+  list.querySelectorAll(".conversation-row").forEach((r) => existing.set(r.dataset.id, r));
 
-  list.querySelectorAll(".conversation-row").forEach((row) => {
-    row.addEventListener("click", (e) => {
-      if (e.target.closest(".btn-block-sender")) return;
-      selectConversation(Number(row.dataset.id), true, true);
-    });
-    row.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        if (e.target.closest(".btn-block-sender")) return;
-        e.preventDefault();
-        selectConversation(Number(row.dataset.id), true, true);
+  const ordered = state.conversations.map((c) => {
+    let row = existing.get(String(c.id));
+    if (row) {
+      existing.delete(String(c.id));
+      const sig = conversationSignature(c);
+      if (row.dataset.sig !== sig) {
+        row.innerHTML = conversationRowHTML(c);
+        row.dataset.sig = sig;
       }
-    });
+    } else {
+      row = document.createElement("div");
+      row.className = "conversation-row";
+      row.dataset.id = String(c.id);
+      row.dataset.sig = conversationSignature(c);
+      row.setAttribute("role", "option");
+      row.setAttribute("tabindex", "-1");
+      row.innerHTML = conversationRowHTML(c);
+    }
+    row.classList.toggle("selected", c.id === state.selectedId);
+    row.classList.toggle("unread", !c.is_read);
+    row.classList.toggle("starred", !!c.is_starred);
+    row.setAttribute("aria-selected", c.id === state.selectedId ? "true" : "false");
+    return row;
   });
 
-  list.querySelectorAll(".btn-block-sender").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
+  existing.forEach((row) => row.remove());     // gone from this view
+  reconcileRowOrder(list, ordered);
+  updateLoadMore();
+}
+
+/* Puts `ordered` into `list` with the fewest possible DOM moves.
+   `replaceChildren(...nodes)` looks like it reuses the nodes, but it detaches and
+   re-attaches every one of them — which blurs whatever had focus and resets the
+   scroll offset. When a poll returns the same rows in the same order (the usual
+   case) this touches the DOM not at all; when the order really changed, it moves
+   only the rows that moved and puts focus and scroll back afterwards. */
+function reconcileRowOrder(list, ordered) {
+  const focused = document.activeElement;
+  const focusedId = focused && focused.closest
+    ? focused.closest(".conversation-row")?.dataset.id
+    : null;
+  const scrollTop = list.scrollTop;
+  let moved = false;
+
+  let ref = list.firstChild;
+  for (const node of ordered) {
+    if (ref === node) {
+      ref = ref.nextSibling;
+      continue;
+    }
+    list.insertBefore(node, ref);   // moves it if already attached
+    moved = true;
+  }
+  while (ref) {                      // anything left over is stale
+    const next = ref.nextSibling;
+    ref.remove();
+    ref = next;
+    moved = true;
+  }
+
+  if (!moved) return;
+  if (list.scrollTop !== scrollTop) list.scrollTop = scrollTop;
+  if (focusedId) {
+    const again = list.querySelector(`.conversation-row[data-id="${focusedId}"]`);
+    if (again && document.activeElement !== again) again.focus({ preventScroll: true });
+  }
+}
+
+/* Contents that, when unchanged, mean the row does not need re-rendering. */
+function conversationSignature(c) {
+  return [
+    c.status, c.is_read, c.is_starred, c.is_archived,
+    c.last_message_at, c.subject, c.snippet,
+    c.message_count, c.attachment_count, c.note_count,
+    c.last_direction, c.client_name, c.origin, c.destination,
+  ].join("|");
+}
+
+/* One delegated listener for the whole list, attached once. Rows come and go on
+   every poll; per-row listeners would have to be re-attached each time. */
+function wireConversationList() {
+  const list = el("conversation-list");
+  if (!list || list.dataset.wired) return;
+  list.dataset.wired = "1";
+
+  list.addEventListener("click", (e) => {
+    const star = e.target.closest(".btn-row-star");
+    if (star) {
+      e.stopPropagation();
+      toggleConversationFlag(Number(star.dataset.id), "is_starred");
+      return;
+    }
+    const archive = e.target.closest(".btn-row-archive");
+    if (archive) {
+      e.stopPropagation();
+      toggleConversationFlag(Number(archive.dataset.id), "is_archived");
+      return;
+    }
+    const block = e.target.closest(".btn-block-sender");
+    if (block) {
       e.stopPropagation();
       e.preventDefault();
-      const id = Number(btn.dataset.id);
-      const email = btn.dataset.email;
-      handleBlockSender(id, email, btn);
+      handleBlockSender(Number(block.dataset.id), block.dataset.email, block);
+      return;
+    }
+    const row = e.target.closest(".conversation-row");
+    if (row) selectConversation(Number(row.dataset.id), true, true);
+  });
+
+  list.addEventListener("keydown", handleListKeydown);
+}
+
+/* Arrow keys move through the list the way a mail client does; the letter keys
+   act on whatever is highlighted. Ignored while typing so a reply containing
+   the letter "s" doesn't silently star something. */
+function handleListKeydown(e) {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+  if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+
+  const rows = Array.from(el("conversation-list").querySelectorAll(".conversation-row"));
+  if (!rows.length) return;
+
+  let index = rows.findIndex((r) => Number(r.dataset.id) === state.selectedId);
+
+  const move = (delta) => {
+    e.preventDefault();
+    const next = index < 0 ? 0 : Math.min(rows.length - 1, Math.max(0, index + delta));
+    const id = Number(rows[next].dataset.id);
+    selectConversation(id, true, false);
+    rows[next].scrollIntoView({ block: "nearest" });
+    rows[next].focus({ preventScroll: true });
+  };
+
+  switch (e.key) {
+    case "ArrowDown": case "j": return move(1);
+    case "ArrowUp":   case "k": return move(-1);
+    case "Enter":
+      if (index >= 0) { e.preventDefault(); selectConversation(state.selectedId, true, true); }
+      return;
+    case "u": case "U": {
+      if (!state.selectedId) return;
+      e.preventDefault();
+      const c = state.conversations.find((x) => x.id === state.selectedId);
+      if (c) setConversationFlags(c.id, { is_read: !c.is_read });
+      return;
+    }
+    case "s": case "S":
+      if (state.selectedId) { e.preventDefault(); toggleConversationFlag(state.selectedId, "is_starred"); }
+      return;
+    case "e": case "E":
+      if (state.selectedId) { e.preventDefault(); toggleConversationFlag(state.selectedId, "is_archived"); }
+      return;
+  }
+}
+
+function toggleConversationFlag(id, flag) {
+  const c = state.conversations.find((x) => x.id === id);
+  if (!c) return;
+  setConversationFlags(id, { [flag]: !c[flag] });
+}
+
+/* Applies the change locally first so the row reacts immediately, then persists.
+   On failure the local copy is put back — a star that silently didn't save is
+   worse than one that visibly bounces back. */
+async function setConversationFlags(id, flags) {
+  const c = state.conversations.find((x) => x.id === id);
+  const previous = c ? { is_read: c.is_read, is_starred: c.is_starred, is_archived: c.is_archived } : null;
+  if (c) Object.assign(c, flags);
+  renderConversations();
+
+  try {
+    const res = await api(`/api/conversations/${id}/flags`, {
+      method: "POST",
+      body: JSON.stringify(flags),
+    });
+    if (res.counts) { state.counts = res.counts; state.unread = res.unread || {}; renderStatusNav(); }
+
+    // Archiving (or unarchiving) moves it out of the current view.
+    if ("is_archived" in flags) {
+      const inArchiveView = state.listFilter === "ARCHIVED";
+      if (flags.is_archived !== inArchiveView) {
+        state.conversations = state.conversations.filter((x) => x.id !== id);
+        if (state.selectedId === id) {
+          state.selectedId = null;
+          if (el("detail-empty")) el("detail-empty").hidden = false;
+          if (el("detail-content")) el("detail-content").hidden = true;
+        }
+        renderConversations();
+        showToast(flags.is_archived ? "Archived." : "Moved back to the inbox.");
+      }
+    }
+  } catch (err) {
+    if (c && previous) Object.assign(c, previous);
+    renderConversations();
+    showToast("Could not save that change.", "error");
+    console.error("Flag update failed:", err);
+  }
+}
+
+function updateLoadMore() {
+  const btn = el("btn-load-more");
+  if (!btn) return;
+  const remaining = (state.total || 0) - state.conversations.length;
+  btn.hidden = remaining <= 0;
+  const label = el("load-more-count");
+  if (label) label.textContent = remaining > 0 ? `(${remaining} more)` : "";
+}
+
+function wireInboxControls() {
+  document.querySelectorAll(".list-filter").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".list-filter").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.listFilter = btn.dataset.filter;
+      state.offset = 0;
+      loadConversations();
     });
   });
+
+  const loadMore = el("btn-load-more");
+  if (loadMore) {
+    loadMore.addEventListener("click", () => {
+      state.offset = state.conversations.length;
+      loadConversations({ append: true });
+    });
+  }
+
+  const markAll = el("btn-mark-all-read");
+  if (markAll) {
+    markAll.addEventListener("click", async () => {
+      try {
+        const res = await api("/api/conversations/mark-all-read", {
+          method: "POST",
+          body: JSON.stringify({ status: state.status }),
+        });
+        state.conversations.forEach((c) => { c.is_read = true; });
+        state.counts = res.counts; state.unread = res.unread || {};
+        renderStatusNav();
+        renderConversations();
+        showToast(res.marked ? `Marked ${res.marked} conversation${res.marked > 1 ? "s" : ""} read.` : "Nothing unread here.");
+      } catch (err) {
+        showToast("Could not mark everything read.", "error");
+      }
+    });
+  }
 }
 
 // -------------------------------------------------------------------------
@@ -1670,8 +1977,29 @@ async function selectConversation(id, reloadDetail = true, switchTab = false) {
     setTab("thread");
   }
   document.querySelectorAll(".conversation-row").forEach((row) => {
-    row.classList.toggle("selected", Number(row.dataset.id) === id);
+    const isThis = Number(row.dataset.id) === id;
+    row.classList.toggle("selected", isThis);
+    row.setAttribute("aria-selected", isThis ? "true" : "false");
   });
+
+  // Opening a conversation reads it, as in any mail client. Fire-and-forget: the
+  // thread should render immediately and not wait on the flag round-trip.
+  const listed = state.conversations.find((c) => c.id === id);
+  if (listed && !listed.is_read) {
+    listed.is_read = true;
+    const row = document.querySelector(`.conversation-row[data-id="${id}"]`);
+    if (row) row.classList.remove("unread");
+    api(`/api/conversations/${id}/flags`, {
+      method: "POST",
+      body: JSON.stringify({ is_read: true }),
+    }).then((res) => {
+      if (res && res.counts) {
+        state.counts = res.counts;
+        state.unread = res.unread || {};
+        renderStatusNav();
+      }
+    }).catch(() => { /* stays read locally; the next poll corrects it */ });
+  }
 
   try {
     if (reloadDetail || !state.selectedDetail || state.selectedDetail.conversation?.id !== id) {
@@ -3063,15 +3391,18 @@ function wireEvents() {
   wireEvents();
   setupAnalyticsTabs();
   wireViewNav();
+  wireConversationList();
+  wireInboxControls();
   const authenticated = await checkAuth();
   if (authenticated) {
     await loadConversations();
   }
 
-  // Periodic auto-refresh every 15 seconds to display new incoming emails in real-time
+  // Poll for new mail. `silent` keeps it from reloading the open thread out from
+  // under whoever is reading or replying to it.
   setInterval(async () => {
-    if (state.user && state.view === "conversations") {
-      await loadConversations();
+    if (state.user && state.view === "conversations" && !document.hidden) {
+      await loadConversations({ silent: true });
     }
   }, 15000);
 })();

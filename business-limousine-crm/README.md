@@ -164,8 +164,37 @@ than `python app.py`'s dev server for anything beyond local testing.
 | POST   | `/api/sync`                              | Trigger an on-demand IMAP sync        |
 | POST   | `/api/auth/login` / `logout` / `me`      | Session authentication                |
 | GET    | `/api/analytics`                         | Analytics payload (see below)         |
+| POST   | `/api/conversations/<id>/flags`          | Read / starred / archived             |
+| POST   | `/api/conversations/mark-all-read`       | Mark the current view read            |
 
-## 8. Fleet analytics & quoting
+`GET /api/conversations` takes `status`, `search`, `archived`, `limit` (max 200,
+default 50) and `offset`, and returns `total` / `has_more` alongside the page.
+
+## 8. The inbox
+
+The manifest behaves like a mail client, not a table of records.
+
+- **Read and unread** are tracked per conversation, separately from the dispatch
+  status — a thread can be CONFIRMED and still unread. Opening one marks it read;
+  new inbound mail marks it unread again and pulls it out of the archive, which
+  is what makes a client's reply visible. Sending marks it read.
+- **Rows show sender, subject and a preview** of the latest message, with quoted
+  replies and signatures stripped so a long thread doesn't preview as
+  `> On Tuesday, X wrote:`. Thread length, attachments, internal notes and
+  "we replied last" each get an indicator.
+- **Star and archive** per row. Archiving removes it from the inbox views and
+  from the sidebar badge counts.
+- **Search covers message subjects and bodies**, not just the client record.
+- **Keyboard:** `↑`/`↓` (or `j`/`k`) move, `Enter` opens, `U` toggles unread,
+  `S` stars, `E` archives. Ignored while typing.
+- **Paged at 50** with a "Load more" button, rather than fetching every
+  conversation on every poll.
+
+The 15-second poll reconciles the list in place: rows that are still present keep
+their DOM node, so a refresh no longer resets scroll position or drops keyboard
+focus, and it no longer reloads the thread you are reading.
+
+## 9. Fleet analytics & quoting
 
 The analytics do **not** come from the CRM mailbox database. They are fitted
 from Waynium mission exports by `backend/analytics/pricing`, which writes
@@ -207,7 +236,7 @@ Rebuild it with `python backend/analytics/make_sample.py`. That script refuses
 to write if any real identity survives anonymisation, so a new name-carrying
 field added upstream fails the build instead of being published quietly.
 
-## 9. Security notes
+## 10. Security notes
 
 **The session key.** `Config.SECRET_KEY` used to fall back to a constant
 committed to this public repository — knowing it is enough to forge a
@@ -237,7 +266,7 @@ the repository private.
 **Default accounts.** `admin123` / `dispatch123` are published above. Change
 them on first login.
 
-## 10. Known limitations / good next steps
+## 11. Known limitations / good next steps
 
 - Conversation matching is by email address only; a client writing from a
   second address starts a second conversation.

@@ -1126,8 +1126,27 @@
 
     <div class="content" id="conversations-content">
       <section class="list-panel" id="list-panel">
-        <div id="conversation-list" class="conversation-list"></div>
+        <div class="list-toolbar">
+          <div class="list-filters" role="group" aria-label="Filter conversations">
+            <button type="button" class="list-filter active" data-filter="ALL">All</button>
+            <button type="button" class="list-filter" data-filter="UNREAD">
+              Unread <span class="filter-count" id="filter-unread-count" hidden>0</span>
+            </button>
+            <button type="button" class="list-filter" data-filter="STARRED">Starred</button>
+            <button type="button" class="list-filter" data-filter="ARCHIVED">Archived</button>
+          </div>
+          <button type="button" class="list-mark-read" id="btn-mark-all-read" title="Mark everything in this view as read">
+            Mark all read
+          </button>
+        </div>
+        <div id="conversation-list" class="conversation-list" role="listbox" aria-label="Conversations" tabindex="0"></div>
         <div id="list-empty" class="list-empty" hidden>No conversations match this view.</div>
+        <button type="button" class="list-load-more" id="btn-load-more" hidden>
+          Load more <span id="load-more-count"></span>
+        </button>
+        <div class="list-hint">
+          <kbd>↑</kbd><kbd>↓</kbd> move · <kbd>U</kbd> unread · <kbd>S</kbd> star · <kbd>E</kbd> archive
+        </div>
       </section>
 
       <section class="detail-panel" id="detail-panel">
