@@ -75,7 +75,7 @@ def _is_outbound_sender(from_addr):
     return from_clean in our_addresses
 
 
-def _store_message(db_conn, parsed, ai_result=None):
+def _store_message(db_conn, parsed, ai_result=None, imap_uid=None):
     is_outbound = _is_outbound_sender(parsed.get("from_addr"))
 
     if is_outbound:
@@ -139,6 +139,10 @@ def _store_message(db_conn, parsed, ai_result=None):
         ai_category=ai_result["category"] if ai_result else None,
         ai_confidence=ai_result["confidence"] if ai_result else None,
         received_at=parsed["date_iso"],
+        # Where this message sits in the mailbox, so its attachments can be
+        # fetched on demand rather than stored locally.
+        imap_uid=str(imap_uid) if imap_uid is not None else None,
+        imap_folder=Config.IMAP_FOLDER,
     )
     return conversation_id
 
@@ -208,7 +212,7 @@ def run_once(deep_limit=None):
                                 if not ai_result.get("client_email") and form_fields.get("email"):
                                     ai_result["client_email"] = form_fields["email"]
 
-                        _store_message(db_conn, parsed, ai_result)
+                        _store_message(db_conn, parsed, ai_result, imap_uid=uid)
                         processed += 1
 
                     highest_uid = max(highest_uid, int(uid))

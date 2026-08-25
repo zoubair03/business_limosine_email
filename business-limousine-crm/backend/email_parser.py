@@ -73,7 +73,12 @@ def parse_raw_email(raw_bytes):
     attachments = []
 
     if msg.is_multipart():
-        for part in msg.walk():
+        # `walk()` order is stable for a given message, so the index of a part is a
+        # durable pointer back into the mail. We record that pointer instead of
+        # writing the bytes out: attachments are streamed from IMAP when someone
+        # actually opens one, so nothing sensitive is ever copied to disk. See
+        # app.api_message_attachment.
+        for part_index, part in enumerate(msg.walk()):
             content_type = part.get_content_type()
             disposition = str(part.get("Content-Disposition") or "")
             filename = part.get_filename()
@@ -81,22 +86,13 @@ def parse_raw_email(raw_bytes):
             if "attachment" in disposition or filename:
                 payload = part.get_payload(decode=True)
                 if payload:
-                    clean_filename = filename or f"attachment_{uuid.uuid4().hex[:8]}"
-                    # Sanitize filename
-                    safe_name = re.sub(r"[^\w\.\-\s]", "_", clean_filename)
-                    disk_filename = f"inbound_{uuid.uuid4().hex[:8]}_{safe_name}"
-                    file_path = UPLOADS_DIR / disk_filename
-                    try:
-                        with open(file_path, "wb") as f:
-                            f.write(payload)
-                        attachments.append({
-                            "filename": clean_filename,
-                            "file_size": len(payload),
-                            "content_type": content_type,
-                            "url": f"/uploads/{disk_filename}",
-                        })
-                    except Exception as ex:
-                        pass
+                    clean_filename = filename or f"attachment_{part_index}"
+                    attachments.append({
+                        "filename": clean_filename,
+                        "file_size": len(payload),
+                        "content_type": content_type,
+                        "part_index": part_index,
+                    })
                 continue
 
             if content_type == "text/plain" and not body_text:

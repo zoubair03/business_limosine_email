@@ -183,6 +183,11 @@ def init_db():
         if added_read:
             conn.execute("UPDATE conversations SET is_read = 1")
 
+        # Where the message lives in the mailbox, so an attachment can be streamed
+        # from IMAP on demand instead of being copied to disk at sync time.
+        _add_column(conn, "messages", "imap_uid", "TEXT")
+        _add_column(conn, "messages", "imap_folder", "TEXT")
+
         # Created here rather than in SCHEMA: on an existing database the columns
         # above do not exist until the ALTERs have run, and CREATE TABLE IF NOT
         # EXISTS is a no-op, so an index in SCHEMA referencing them fails outright.

@@ -402,7 +402,8 @@ def message_exists(conn, message_id):
 
 def add_message(conn, conversation_id, direction, subject, body_text, body_html,
                  from_addr, to_addr, cc_addr=None, attachments=None, message_id=None, in_reply_to=None,
-                 ai_category=None, ai_confidence=None, received_at=None):
+                 ai_category=None, ai_confidence=None, received_at=None,
+                 imap_uid=None, imap_folder=None):
     now = _now()
     received_at = received_at or now
     if isinstance(attachments, (list, dict)):
@@ -414,11 +415,13 @@ def add_message(conn, conversation_id, direction, subject, body_text, body_html,
         """
         INSERT OR IGNORE INTO messages
             (conversation_id, direction, message_id, in_reply_to, from_addr, to_addr, cc_addr,
-             subject, body_text, body_html, attachments, ai_category, ai_confidence, received_at, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             subject, body_text, body_html, attachments, ai_category, ai_confidence, received_at, created_at,
+             imap_uid, imap_folder)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (conversation_id, direction, message_id, in_reply_to, from_addr, to_addr, cc_addr,
-         subject, body_text, body_html, attachments_str, ai_category, ai_confidence, received_at, now),
+         subject, body_text, body_html, attachments_str, ai_category, ai_confidence, received_at, now,
+         imap_uid, imap_folder),
     )
     # INSERT OR IGNORE: a duplicate message_id is a re-sync of mail already seen,
     # and must not resurrect a thread as unread or bump it up the manifest.

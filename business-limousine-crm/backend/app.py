@@ -6,6 +6,7 @@ Run with:  python app.py
 """
 from datetime import timedelta
 import html
+import io
 import json
 import logging
 import mimetypes
@@ -16,7 +17,7 @@ import threading
 import time
 import uuid
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_file, send_from_directory
 from werkzeug.utils import secure_filename
 
 from auth import (
@@ -126,6 +127,14 @@ def row_to_message(row):
         elif isinstance(att_raw, list):
             attachments = att_raw
 
+    # Inbound attachments carry a part_index rather than a stored file: their URL
+    # points at the streaming endpoint, which reads the bytes from the mailbox on
+    # demand. Older rows still carry a literal `url` into /uploads and keep it, so
+    # anything synced before this change still opens.
+    for att in attachments:
+        if not att.get("url") and att.get("part_index") is not None:
+            att["url"] = f"/api/messages/{row['id']}/attachments/{att['part_index']}"
+
     return {
         "id": row["id"],
         "conversation_id": row["conversation_id"],
@@ -182,6 +191,110 @@ def serve_uploads(filename):
     missing piece was only the session check.
     """
     return send_from_directory(str(UPLOADS_DIR), filename)
+
+
+@app.get("/api/messages/<int:message_id>/attachments/<int:part_index>")
+@login_required
+def api_message_attachment(message_id, part_index):
+    """Streams one inbound attachment straight from the mailbox.
+
+    Inbound attachments are deliberately never written to disk. The sync records
+    only where the part lives (IMAP uid + folder + index within `msg.walk()`);
+    the bytes are fetched here, when someone actually opens the file, and
+    streamed to them. Nothing sensitive sits on the server between syncs, so
+    there is no attachment store to leak, back up by accident, or commit.
+
+    The cost is that this needs the mailbox reachable, and that a message deleted
+    or moved in the mailbox becomes unreadable here — which is the correct
+    behaviour: the mailbox is the record, this is a view onto it.
+    """
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT id, conversation_id, imap_uid, imap_folder, attachments "
+            "FROM messages WHERE id = ?", (message_id,)
+        ).fetchone()
+
+    if not row:
+        return jsonify({"error": "Message not found"}), 404
+
+    try:
+        declared = json.loads(row["attachments"] or "[]")
+    except (ValueError, TypeError):
+        declared = []
+    meta = next((a for a in declared if a.get("part_index") == part_index), None)
+    if meta is None:
+        return jsonify({"error": "No such attachment on this message"}), 404
+
+    if not row["imap_uid"]:
+        # Pre-dates UID tracking, or was composed locally rather than received.
+        return jsonify({
+            "error": "This attachment cannot be retrieved.",
+            "detail": "The message was stored before attachments were streamed "
+                      "from the mailbox. Open it directly in the mailbox instead.",
+            "code": "NO_IMAP_REFERENCE",
+        }), 409
+
+    try:
+        payload, content_type, filename = _fetch_attachment_from_imap(
+            row["imap_uid"], row["imap_folder"], part_index
+        )
+    except LookupError:
+        return jsonify({
+            "error": "That message is no longer in the mailbox.",
+            "detail": "It may have been deleted or moved. Attachments are read "
+                      "live from the mailbox and are not copied to this server.",
+            "code": "MESSAGE_GONE",
+        }), 410
+    except Exception as exc:
+        logger.error("Attachment fetch failed for message %s part %s: %s",
+                     message_id, part_index, exc)
+        return jsonify({
+            "error": "Could not reach the mailbox to fetch this attachment.",
+            "code": "IMAP_UNAVAILABLE",
+        }), 503
+
+    resp = send_file(
+        io.BytesIO(payload),
+        mimetype=content_type or meta.get("content_type") or "application/octet-stream",
+        as_attachment=False,
+        download_name=filename or meta.get("filename") or f"attachment-{part_index}",
+    )
+    # Never let a proxy or the browser cache put the file back on disk.
+    resp.headers["Cache-Control"] = "no-store, private"
+    return resp
+
+
+def _fetch_attachment_from_imap(uid, folder, part_index):
+    """Returns (bytes, content_type, filename) for one MIME part.
+
+    Raises LookupError if the message or the part is no longer there.
+    """
+    import email as _email
+    import imaplib
+
+    conn = imaplib.IMAP4_SSL(Config.IMAP_HOST, Config.IMAP_PORT)
+    try:
+        conn.login(Config.IMAP_USER, Config.IMAP_PASSWORD)
+        conn.select(folder or Config.IMAP_FOLDER)
+        status, data = conn.uid("fetch", str(uid), "(RFC822)")
+        if status != "OK" or not data or not data[0] or not isinstance(data[0], tuple):
+            raise LookupError(f"UID {uid} not present in {folder}")
+        msg = _email.message_from_bytes(data[0][1])
+    finally:
+        try:
+            conn.logout()
+        except Exception:
+            pass
+
+    for idx, part in enumerate(msg.walk()):
+        if idx != part_index:
+            continue
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            raise LookupError(f"Part {part_index} carries no payload")
+        return payload, part.get_content_type(), part.get_filename()
+
+    raise LookupError(f"Part {part_index} not found in UID {uid}")
 
 
 @app.post("/api/upload")
