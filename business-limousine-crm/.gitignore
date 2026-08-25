@@ -17,6 +17,8 @@ uploads/
 backend/analytics/dashboard_data.json
 backend/analytics/export_*.csv
 backend/analytics/pricing/feat.pkl
+# The fitted model IS the rate card - real price curves per vehicle.
+backend/analytics/pricing/engine.json
 
 # The checked-in sample is fabricated and safe to track.
 !backend/analytics/dashboard_data.sample.json

@@ -93,6 +93,53 @@ def jitter(v, pct=0.18):
     return int(round(out)) if isinstance(v, int) else round(out, 2)
 
 
+# Turnover and fleet size are commercially sensitive in their own right — "€3.0M
+# across 8,224 trips" tells a competitor the size of the business even with every
+# name removed. Both are rescaled by a single constant each, so every proportion,
+# percentage and Pareto curve in the file stays internally consistent while no
+# absolute figure is real.
+MONEY_SCALE = 0.7431
+COUNT_SCALE = 0.8118
+
+MONEY_KEYS = {
+    "sum", "mean", "total_revenue", "avg_trip_value", "median_trip_value",
+    "avg_trip_value_ex_outlier", "monthly_avg", "avg_revenue_per_year",
+    "revenue_with_driver", "revenue_total", "Sale Price HT", "price",
+    "Median (€ ex-VAT)", "P25 (€)", "P75 (€)", "Mean (€)", "Base Fee (€)",
+    "Median (€/hr)", "P25 (€/hr)", "P75 (€/hr)", "Recommended Rate (€/hr)",
+    "local_airport_flat", "day_excursion_flat",
+    # the fitted model's own coefficients are the rate card in another form
+    "base", "per_hour", "per_km", "min_charge", "Rate (€/km)",
+}
+COUNT_KEYS = {
+    "count", "total_trips", "n_trips_with_driver", "n_real_trips_total",
+    "clean_rows", "total_raw_rows_before_cleaning", "excluded_cancelled",
+    "excluded_non_mission", "excluded_zero_price", "N Trips", "N Trips (2022-2026)",
+    "total_rides", "direct_rides", "subcontracted_rides", "rides_last_30",
+    "askable_last_30", "live_missions",
+    # roster and client-base sizes are equally telling
+    "unique_clients", "unique_partners", "total_clients", "n_drivers",
+    "total_drivers", "accounts", "emails_in_export", "clients_profiled",
+    "n_trips", "n_quotes",
+}
+
+
+def rescale(node, key=None):
+    """Recursively rescale money and count leaves by their constant factor."""
+    if isinstance(node, dict):
+        return {k: rescale(v, k) for k, v in node.items()}
+    if isinstance(node, list):
+        return [rescale(v, key) for v in node]
+    if isinstance(node, bool) or not isinstance(node, (int, float)):
+        return node
+    if key in MONEY_KEYS:
+        out = node * MONEY_SCALE
+        return int(round(out)) if isinstance(node, int) else round(out, 2)
+    if key in COUNT_KEYS:
+        return max(1, int(round(node * COUNT_SCALE)))
+    return node
+
+
 def collect_identities(real):
     """Every string in the real file that names a person, a company or an address."""
     out = set()
@@ -194,6 +241,9 @@ def main():
         for r in rows:
             if "route" in r:
                 r["route"] = fake_route(r["route"])
+
+    # Rescale last, so it covers every block including ones added upstream later.
+    d = rescale(d)
 
     leaks = find_leaks(json.load(open(SRC, encoding="utf-8")), d)
     if leaks:
